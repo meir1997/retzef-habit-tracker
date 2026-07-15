@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icon-180.png" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=2" />
   </head>
   <body>
     <div class="app-shell">
@@ -154,6 +154,20 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=5"></script>
+    <dialog class="habit-dialog stats-dialog" id="statsDialog">
+      <div class="habit-form">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">סטטיסטיקה להרגל</p>
+            <h2 id="statsHabitName">הרגל</h2>
+          </div>
+          <button class="icon-button subtle" id="closeStatsDialog" type="button" aria-label="סגירה">×</button>
+        </div>
+        <div class="habit-stats-grid" id="habitStatsGrid"></div>
+        <div class="goal-list" id="goalList"></div>
+      </div>
+    </dialog>
+
+    <script src="app.js?v=6"></script>
   </body>
 </html>
