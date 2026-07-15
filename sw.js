@@ -1,4 +1,4 @@
-const CACHE_NAME = "retzef-v2";
+const CACHE_NAME = "retzef-v4";
 const ASSETS = [
   "./",
   "./index.html",
