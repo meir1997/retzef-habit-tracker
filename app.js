@@ -2,6 +2,7 @@ const STORAGE_KEY = "retzef-habits-v1";
 const CLOUD_TOKEN_KEY = "retzef-github-token-v1";
 const CLOUD_GIST_KEY = "retzef-github-gist-id-v1";
 const CLOUD_FILE_NAME = "retzef-habit-data.json";
+const GOAL_DAYS = [7, 30, 60, 100];
 const dayLabels = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 const colorOptions = ["#2f8f6f", "#4878c7", "#d86445", "#d7a528", "#7b62b3", "#2b8a9d", "#9a6a3a"];
 
@@ -31,6 +32,11 @@ const els = {
   dayPicker: document.querySelector("#dayPicker"),
   colorPicker: document.querySelector("#colorPicker"),
   deleteHabit: document.querySelector("#deleteHabit"),
+  statsDialog: document.querySelector("#statsDialog"),
+  closeStatsDialog: document.querySelector("#closeStatsDialog"),
+  statsHabitName: document.querySelector("#statsHabitName"),
+  habitStatsGrid: document.querySelector("#habitStatsGrid"),
+  goalList: document.querySelector("#goalList"),
 };
 
 let habits = loadHabits();
@@ -98,6 +104,7 @@ function bindEvents() {
   document.querySelector("#openAdd").addEventListener("click", () => openHabitDialog());
   document.querySelector("#openAddSecondary").addEventListener("click", () => openHabitDialog());
   document.querySelector("#closeDialog").addEventListener("click", () => els.dialog.close());
+  els.closeStatsDialog.addEventListener("click", () => els.statsDialog.close());
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => setView(tab.dataset.view));
@@ -154,7 +161,7 @@ function render() {
   const today = new Date();
   const todayKey = dateKey(today);
   const dueToday = habits.filter((habit) => isHabitDue(habit, today));
-  const doneToday = dueToday.filter((habit) => habit.records[todayKey]);
+  const doneToday = dueToday.filter((habit) => getRecordStatus(habit, todayKey) === "done");
   const percent = dueToday.length ? Math.round((doneToday.length / dueToday.length) * 100) : 0;
 
   els.todayLabel.textContent = formatFullDate(today);
@@ -180,7 +187,7 @@ function renderWeek(today) {
     const day = addDays(sunday, index);
     const key = dateKey(day);
     const due = habits.filter((habit) => isHabitDue(habit, day));
-    const done = due.filter((habit) => habit.records[key]);
+    const done = due.filter((habit) => getRecordStatus(habit, key) === "done");
     const pill = document.createElement("div");
     pill.className = "day-pill";
     pill.classList.toggle("today", key === dateKey(today));
@@ -200,31 +207,43 @@ function renderHabitList(container, items, options) {
 
   items.forEach((habit) => {
     const todayKey = dateKey(new Date());
-    const done = Boolean(habit.records[todayKey]);
+    const status = getRecordStatus(habit, todayKey);
+    const done = status === "done";
+    const missed = status === "missed";
     const card = document.createElement("article");
     card.className = "habit-card";
     card.style.setProperty("--habit-color", habit.color);
 
     const daysText = habit.days.length === 7 ? "כל יום" : habit.days.map((day) => dayLabels[day]).join(", ");
     const note = habit.note ? ` · ${escapeText(habit.note)}` : "";
-    const actionLabel = done ? "סימון כלא בוצע" : "סימון כבוצע";
+    const doneLabel = done ? "ביטול סימון בוצע" : "סימון כבוצע";
+    const missedLabel = missed ? "ביטול סימון X" : "סימון X";
+    const stats = getHabitStats(habit);
 
     card.innerHTML = `
-      <button class="habit-mark ${done ? "done" : ""}" type="button" aria-label="${actionLabel}">
-        <span aria-hidden="true">${done ? "✓" : ""}</span>
-      </button>
+      <div class="habit-actions">
+        <button class="habit-mark ${done ? "done" : ""}" type="button" data-action="done" aria-label="${doneLabel}">
+          <span aria-hidden="true">✓</span>
+        </button>
+        <button class="habit-mark miss ${missed ? "missed" : ""}" type="button" data-action="missed" aria-label="${missedLabel}">
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
       <div class="habit-title">
         <h3>${escapeText(habit.name)}</h3>
         <p>${habit.time} · ${daysText}${note}</p>
       </div>
       <div class="habit-meta">
-        <span class="streak">${getStreak(habit)} ימים</span>
+        <span class="streak">${stats.currentStreak} ימים</span>
         <button class="text-link" type="button">עריכה</button>
+        <button class="text-link" type="button" data-action="stats">סטטיסטיקה</button>
       </div>
     `;
 
-    card.querySelector(".habit-mark").addEventListener("click", () => toggleHabit(habit.id));
+    card.querySelector('[data-action="done"]').addEventListener("click", () => setHabitStatus(habit.id, "done"));
+    card.querySelector('[data-action="missed"]').addEventListener("click", () => setHabitStatus(habit.id, "missed"));
     card.querySelector(".text-link").addEventListener("click", () => openHabitDialog(habit.id));
+    card.querySelector('[data-action="stats"]').addEventListener("click", () => openStatsDialog(habit.id));
 
     if (!options.todayOnly || isHabitDue(habit, new Date())) {
       container.appendChild(card);
@@ -235,17 +254,17 @@ function renderHabitList(container, items, options) {
 function renderInsights(today) {
   const weekDates = Array.from({ length: 7 }, (_, index) => addDays(today, -index));
   const dueInWeek = weekDates.flatMap((day) => habits.filter((habit) => isHabitDue(habit, day)).map((habit) => [habit, day]));
-  const doneInWeek = dueInWeek.filter(([habit, day]) => habit.records[dateKey(day)]).length;
+  const doneInWeek = dueInWeek.filter(([habit, day]) => getRecordStatus(habit, dateKey(day)) === "done").length;
   const weekPercent = dueInWeek.length ? Math.round((doneInWeek / dueInWeek.length) * 100) : 0;
-  const bestHabit = [...habits].sort((a, b) => getStreak(b) - getStreak(a))[0];
-  const totalDone = habits.reduce((sum, habit) => sum + Object.values(habit.records).filter(Boolean).length, 0);
+  const bestHabit = [...habits].sort((a, b) => getHabitStats(b).currentStreak - getHabitStats(a).currentStreak)[0];
+  const totalDone = habits.reduce((sum, habit) => sum + countRecords(habit, "done"), 0);
   const activeDays = new Set(
-    habits.flatMap((habit) => Object.entries(habit.records).filter(([, done]) => done).map(([key]) => key)),
+    habits.flatMap((habit) => Object.entries(habit.records).filter(([, record]) => isDoneRecord(record)).map(([key]) => key)),
   ).size;
 
   els.statsGrid.innerHTML = `
     <div class="stat-card"><strong>${weekPercent}%</strong><span>השלמה בשבעת הימים האחרונים</span></div>
-    <div class="stat-card"><strong>${bestHabit ? getStreak(bestHabit) : 0}</strong><span>הרצף הארוך הפעיל ביותר</span></div>
+    <div class="stat-card"><strong>${bestHabit ? getHabitStats(bestHabit).currentStreak : 0}</strong><span>הרצף הארוך הפעיל ביותר</span></div>
     <div class="stat-card"><strong>${totalDone}</strong><span>סימונים שבוצעו בסך הכל</span></div>
     <div class="stat-card"><strong>${activeDays}</strong><span>ימים עם התקדמות</span></div>
   `;
@@ -268,7 +287,7 @@ function renderMonth(today) {
   for (let dayNumber = 1; dayNumber <= last.getDate(); dayNumber += 1) {
     const day = new Date(today.getFullYear(), today.getMonth(), dayNumber);
     const key = dateKey(day);
-    const hasProgress = habits.some((habit) => habit.records[key]);
+    const hasProgress = habits.some((habit) => getRecordStatus(habit, key) === "done");
     const cell = document.createElement("div");
     cell.className = "calendar-day";
     cell.classList.toggle("has-progress", hasProgress);
@@ -278,13 +297,50 @@ function renderMonth(today) {
   }
 }
 
-function toggleHabit(id) {
+function setHabitStatus(id, nextStatus) {
   const habit = habits.find((item) => item.id === id);
   if (!habit) return;
   const key = dateKey(new Date());
-  habit.records[key] = !habit.records[key];
+  const currentStatus = getRecordStatus(habit, key);
+  if (currentStatus === nextStatus) {
+    delete habit.records[key];
+  } else {
+    habit.records[key] = nextStatus === "done" ? true : "missed";
+  }
   render();
   scheduleCloudUpload();
+}
+
+function openStatsDialog(id) {
+  const habit = habits.find((item) => item.id === id);
+  if (!habit) return;
+  const stats = getHabitStats(habit);
+  els.statsHabitName.textContent = habit.name;
+  els.habitStatsGrid.innerHTML = `
+    <div class="stat-card"><strong>${stats.currentStreak}</strong><span>רצף נוכחי</span></div>
+    <div class="stat-card"><strong>${stats.bestStreak}</strong><span>רצף שיא</span></div>
+    <div class="stat-card"><strong>${stats.last30Percent}%</strong><span>הצלחה ב־30 ימים</span></div>
+    <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
+    <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
+    <div class="stat-card"><strong>${stats.activeDays}</strong><span>ימים פעילים</span></div>
+  `;
+  els.goalList.innerHTML = GOAL_DAYS.map((goal) => {
+    const progress = Math.min(stats.currentStreak, goal);
+    const percent = Math.round((progress / goal) * 100);
+    const reached = stats.currentStreak >= goal;
+    return `
+      <div class="goal-row ${reached ? "reached" : ""}">
+        <div>
+          <strong>${goal} ימים ברצף</strong>
+          <span>${reached ? "הושג" : `${progress} מתוך ${goal}`}</span>
+        </div>
+        <div class="goal-bar" aria-label="התקדמות ליעד ${goal} ימים">
+          <span style="width:${percent}%"></span>
+        </div>
+      </div>
+    `;
+  }).join("");
+  els.statsDialog.showModal();
 }
 
 function openHabitDialog(id = null) {
@@ -549,18 +605,83 @@ function isHabitDue(habit, date) {
 }
 
 function getStreak(habit) {
+  return getHabitStats(habit).currentStreak;
+}
+
+function getHabitStats(habit) {
+  const records = habit.records ?? {};
+  const currentStreak = getCurrentStreak(habit);
+  const bestStreak = getBestStreak(habit);
+  const dueLast30 = Array.from({ length: 30 }, (_, index) => addDays(new Date(), -index)).filter((day) =>
+    isHabitDue(habit, day),
+  );
+  const doneLast30 = dueLast30.filter((day) => getRecordStatus(habit, dateKey(day)) === "done").length;
+  const last30Percent = dueLast30.length ? Math.round((doneLast30 / dueLast30.length) * 100) : 0;
+  const doneCount = Object.values(records).filter((record) => isDoneRecord(record)).length;
+  const missedCount = Object.values(records).filter((record) => isMissedRecord(record)).length;
+  const activeDays = new Set(Object.keys(records).filter((key) => getRecordStatus(habit, key) !== "none")).size;
+
+  return { currentStreak, bestStreak, last30Percent, doneCount, missedCount, activeDays };
+}
+
+function getCurrentStreak(habit) {
   let streak = 0;
   let cursor = new Date();
 
   for (let checked = 0; checked < 370; checked += 1) {
     if (isHabitDue(habit, cursor)) {
-      if (!habit.records[dateKey(cursor)]) break;
+      if (getRecordStatus(habit, dateKey(cursor)) !== "done") break;
       streak += 1;
     }
     cursor = addDays(cursor, -1);
   }
 
   return streak;
+}
+
+function getBestStreak(habit) {
+  const recordDates = Object.keys(habit.records ?? {}).sort();
+  if (!recordDates.length) return 0;
+  const firstDate = parseDateKey(recordDates[0]);
+  const today = new Date();
+  let best = 0;
+  let current = 0;
+  let cursor = firstDate;
+
+  while (cursor <= today) {
+    if (isHabitDue(habit, cursor)) {
+      if (getRecordStatus(habit, dateKey(cursor)) === "done") {
+        current += 1;
+        best = Math.max(best, current);
+      } else {
+        current = 0;
+      }
+    }
+    cursor = addDays(cursor, 1);
+  }
+
+  return best;
+}
+
+function countRecords(habit, status) {
+  return Object.values(habit.records ?? {}).filter((record) =>
+    status === "done" ? isDoneRecord(record) : isMissedRecord(record),
+  ).length;
+}
+
+function getRecordStatus(habit, key) {
+  const record = habit.records?.[key];
+  if (isDoneRecord(record)) return "done";
+  if (isMissedRecord(record)) return "missed";
+  return "none";
+}
+
+function isDoneRecord(record) {
+  return record === true || record === "done";
+}
+
+function isMissedRecord(record) {
+  return record === false || record === "missed" || record === "x";
 }
 
 function addDays(date, amount) {
@@ -574,6 +695,11 @@ function dateKey(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function parseDateKey(key) {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
 function formatFullDate(date) {
