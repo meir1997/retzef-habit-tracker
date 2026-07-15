@@ -60,6 +60,25 @@
             </div>
           </div>
           <div class="stats-grid" id="statsGrid"></div>
+          <div class="cloud-panel">
+            <div class="calendar-head">
+              <h3>סנכרון GitHub</h3>
+              <p>
+                שמירה בענן מתבצעת ל־Gist פרטי בחשבון GitHub שלך.
+                <a href="https://github.com/settings/tokens/new?scopes=gist&description=Retzef%20Habit%20Tracker" target="_blank" rel="noreferrer">יצירת token</a>
+              </p>
+            </div>
+            <label>
+              GitHub token
+              <input id="githubToken" dir="ltr" autocomplete="off" placeholder="Token עם הרשאת gist" type="password" />
+            </label>
+            <div class="cloud-actions">
+              <button class="primary-button" id="saveGithubToken" type="button">חיבור</button>
+              <button class="ghost-button neutral" id="uploadCloud" type="button">שמירה לענן</button>
+              <button class="ghost-button neutral" id="downloadCloud" type="button">טעינה מהענן</button>
+            </div>
+            <p class="cloud-status" id="cloudStatus">לא מחובר לענן.</p>
+          </div>
           <div class="calendar-panel">
             <div class="calendar-head">
               <h3 id="monthTitle">החודש</h3>
