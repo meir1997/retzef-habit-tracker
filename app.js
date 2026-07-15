@@ -1,4 +1,7 @@
 const STORAGE_KEY = "retzef-habits-v1";
+const CLOUD_TOKEN_KEY = "retzef-github-token-v1";
+const CLOUD_GIST_KEY = "retzef-github-gist-id-v1";
+const CLOUD_FILE_NAME = "retzef-habit-data.json";
 const dayLabels = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 const colorOptions = ["#2f8f6f", "#4878c7", "#d86445", "#d7a528", "#7b62b3", "#2b8a9d", "#9a6a3a"];
 
@@ -11,6 +14,11 @@ const els = {
   todayHabits: document.querySelector("#todayHabits"),
   allHabits: document.querySelector("#allHabits"),
   statsGrid: document.querySelector("#statsGrid"),
+  githubToken: document.querySelector("#githubToken"),
+  saveGithubToken: document.querySelector("#saveGithubToken"),
+  uploadCloud: document.querySelector("#uploadCloud"),
+  downloadCloud: document.querySelector("#downloadCloud"),
+  cloudStatus: document.querySelector("#cloudStatus"),
   monthGrid: document.querySelector("#monthGrid"),
   monthTitle: document.querySelector("#monthTitle"),
   dialog: document.querySelector("#habitDialog"),
@@ -28,6 +36,8 @@ const els = {
 let habits = loadHabits();
 let selectedDays = [0, 1, 2, 3, 4, 5, 6];
 let selectedColor = colorOptions[0];
+let cloudTimer = null;
+let cloudBusy = false;
 
 function start() {
   buildPickers();
@@ -95,6 +105,9 @@ function bindEvents() {
 
   els.form.addEventListener("submit", handleSave);
   els.deleteHabit.addEventListener("click", handleDelete);
+  els.saveGithubToken.addEventListener("click", handleSaveGithubToken);
+  els.uploadCloud.addEventListener("click", () => uploadCloudData({ manual: true }));
+  els.downloadCloud.addEventListener("click", downloadCloudData);
 }
 
 function buildPickers() {
@@ -155,6 +168,7 @@ function render() {
   renderHabitList(els.todayHabits, dueToday, { todayOnly: true });
   renderHabitList(els.allHabits, habits, { todayOnly: false });
   renderInsights(today);
+  renderCloudPanel();
   saveHabits();
 }
 
@@ -270,6 +284,7 @@ function toggleHabit(id) {
   const key = dateKey(new Date());
   habit.records[key] = !habit.records[key];
   render();
+  scheduleCloudUpload();
 }
 
 function openHabitDialog(id = null) {
@@ -316,6 +331,7 @@ function handleSave(event) {
   habits = existing ? habits.map((habit) => (habit.id === id ? nextHabit : habit)) : [nextHabit, ...habits];
   els.dialog.close();
   render();
+  scheduleCloudUpload();
 }
 
 function handleDelete() {
@@ -324,6 +340,162 @@ function handleDelete() {
   habits = habits.filter((habit) => habit.id !== id);
   els.dialog.close();
   render();
+  scheduleCloudUpload();
+}
+
+function renderCloudPanel() {
+  const hasToken = Boolean(getGitHubToken());
+  const gistId = localStorage.getItem(CLOUD_GIST_KEY);
+  els.githubToken.placeholder = hasToken ? "Token שמור במכשיר הזה" : "Token עם הרשאת gist";
+  els.uploadCloud.disabled = cloudBusy || !hasToken;
+  els.downloadCloud.disabled = cloudBusy || !hasToken || !gistId;
+
+  if (!hasToken) {
+    setCloudStatus("לא מחובר לענן. צור GitHub token עם הרשאת gist והדבק אותו כאן.", "idle");
+  } else if (gistId) {
+    setCloudStatus("מחובר לענן. שינויים חדשים יועלו אוטומטית אחרי סימון או עריכה.", "ok");
+  } else {
+    setCloudStatus("Token שמור. לחץ שמירה לענן כדי ליצור Gist פרטי ראשון.", "idle");
+  }
+}
+
+function handleSaveGithubToken() {
+  const token = els.githubToken.value.trim();
+  if (!token && getGitHubToken()) {
+    setCloudStatus("כבר שמור token במכשיר הזה.", "ok");
+    return;
+  }
+  if (!token) {
+    setCloudStatus("צריך להדביק token לפני החיבור.", "error");
+    return;
+  }
+  localStorage.setItem(CLOUD_TOKEN_KEY, token);
+  els.githubToken.value = "";
+  setCloudStatus("החיבור נשמר במכשיר הזה. אפשר לשמור לענן.", "ok");
+  renderCloudPanel();
+}
+
+function scheduleCloudUpload() {
+  if (!getGitHubToken()) return;
+  window.clearTimeout(cloudTimer);
+  cloudTimer = window.setTimeout(() => uploadCloudData({ manual: false }), 900);
+}
+
+async function uploadCloudData({ manual }) {
+  const token = getGitHubToken();
+  if (!token || cloudBusy) return;
+
+  setCloudBusy(true);
+  try {
+    const payload = {
+      app: "retzef",
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      habits,
+    };
+    const content = JSON.stringify(payload, null, 2);
+    let gistId = localStorage.getItem(CLOUD_GIST_KEY);
+
+    if (!gistId) {
+      const gist = await githubRequest("/gists", {
+        method: "POST",
+        token,
+        body: {
+          description: "Retzef habit tracker cloud data",
+          public: false,
+          files: {
+            [CLOUD_FILE_NAME]: { content },
+          },
+        },
+      });
+      gistId = gist.id;
+      localStorage.setItem(CLOUD_GIST_KEY, gistId);
+    } else {
+      await githubRequest(`/gists/${gistId}`, {
+        method: "PATCH",
+        token,
+        body: {
+          files: {
+            [CLOUD_FILE_NAME]: { content },
+          },
+        },
+      });
+    }
+
+    setCloudStatus(manual ? "נשמר לענן בהצלחה." : "סונכרן לענן.", "ok");
+  } catch (error) {
+    setCloudStatus(`שמירה לענן נכשלה: ${error.message}`, "error");
+  } finally {
+    setCloudBusy(false);
+  }
+}
+
+async function downloadCloudData() {
+  const token = getGitHubToken();
+  const gistId = localStorage.getItem(CLOUD_GIST_KEY);
+  if (!token || !gistId || cloudBusy) return;
+  if (!window.confirm("טעינה מהענן תחליף את הנתונים במכשיר הזה. להמשיך?")) return;
+
+  setCloudBusy(true);
+  try {
+    const gist = await githubRequest(`/gists/${gistId}`, { method: "GET", token });
+    const file = gist.files?.[CLOUD_FILE_NAME];
+    if (!file?.content) throw new Error("לא נמצא קובץ נתונים ב־Gist.");
+
+    const payload = JSON.parse(file.content);
+    if (!Array.isArray(payload.habits)) throw new Error("קובץ הענן לא תקין.");
+
+    habits = payload.habits;
+    saveHabits();
+    render();
+    setCloudStatus("הנתונים נטענו מהענן.", "ok");
+  } catch (error) {
+    setCloudStatus(`טעינה מהענן נכשלה: ${error.message}`, "error");
+  } finally {
+    setCloudBusy(false);
+  }
+}
+
+async function githubRequest(path, options) {
+  const response = await fetch(`https://api.github.com${path}`, {
+    method: options.method,
+    headers: {
+      Authorization: `Bearer ${options.token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+
+  if (!response.ok) {
+    let message = `GitHub החזיר שגיאה ${response.status}`;
+    try {
+      const error = await response.json();
+      if (error.message) message = error.message;
+    } catch {
+      // Keep the generic HTTP message.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+function getGitHubToken() {
+  return localStorage.getItem(CLOUD_TOKEN_KEY);
+}
+
+function setCloudBusy(value) {
+  cloudBusy = value;
+  els.saveGithubToken.disabled = value;
+  els.uploadCloud.disabled = value || !getGitHubToken();
+  els.downloadCloud.disabled = value || !getGitHubToken() || !localStorage.getItem(CLOUD_GIST_KEY);
+}
+
+function setCloudStatus(message, state) {
+  els.cloudStatus.textContent = message;
+  els.cloudStatus.dataset.state = state;
 }
 
 function isHabitDue(habit, date) {
