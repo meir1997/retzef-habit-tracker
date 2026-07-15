@@ -355,14 +355,14 @@ function renderCloudPanel() {
   } else if (gistId) {
     setCloudStatus("מחובר לענן. שינויים חדשים יועלו אוטומטית אחרי סימון או עריכה.", "ok");
   } else {
-    setCloudStatus("Token שמור. לחץ שמירה לענן כדי ליצור Gist פרטי ראשון.", "idle");
+    setCloudStatus("Token שמור. לחץ חיבור כדי לבדוק את GitHub וליצור גיבוי ראשון.", "idle");
   }
 }
 
-function handleSaveGithubToken() {
+async function handleSaveGithubToken() {
   const token = els.githubToken.value.trim();
   if (!token && getGitHubToken()) {
-    setCloudStatus("כבר שמור token במכשיר הזה.", "ok");
+    await initializeCloudConnection(getGitHubToken());
     return;
   }
   if (!token) {
@@ -371,8 +371,40 @@ function handleSaveGithubToken() {
   }
   localStorage.setItem(CLOUD_TOKEN_KEY, token);
   els.githubToken.value = "";
-  setCloudStatus("החיבור נשמר במכשיר הזה. אפשר לשמור לענן.", "ok");
-  renderCloudPanel();
+  setCloudStatus("בודק את החיבור מול GitHub...", "idle");
+  updateCloudButtons();
+  await initializeCloudConnection(token);
+}
+
+async function initializeCloudConnection(token) {
+  if (cloudBusy) return;
+  setCloudBusy(true);
+  try {
+    const profile = await githubRequest("/user", { method: "GET", token });
+    const gist = await findCloudGist(token);
+    if (gist) {
+      localStorage.setItem(CLOUD_GIST_KEY, gist.id);
+      setCloudStatus(`מחובר כ־${profile.login}. נמצא גיבוי קיים, אפשר לטעון או לשמור אליו.`, "ok");
+    } else {
+      setCloudStatus(`מחובר כ־${profile.login}. יוצר גיבוי פרטי ראשון...`, "idle");
+      setCloudBusy(false);
+      await uploadCloudData({ manual: true });
+      updateCloudButtons();
+      return;
+    }
+  } catch (error) {
+    localStorage.removeItem(CLOUD_TOKEN_KEY);
+    localStorage.removeItem(CLOUD_GIST_KEY);
+    setCloudStatus(`החיבור נכשל: ${friendlyGitHubError(error.message)}`, "error");
+  } finally {
+    setCloudBusy(false);
+    updateCloudButtons();
+  }
+}
+
+async function findCloudGist(token) {
+  const gists = await githubRequest("/gists?per_page=100", { method: "GET", token });
+  return gists.find((gist) => Boolean(gist.files?.[CLOUD_FILE_NAME]));
 }
 
 function scheduleCloudUpload() {
@@ -424,9 +456,10 @@ async function uploadCloudData({ manual }) {
 
     setCloudStatus(manual ? "נשמר לענן בהצלחה." : "סונכרן לענן.", "ok");
   } catch (error) {
-    setCloudStatus(`שמירה לענן נכשלה: ${error.message}`, "error");
+    setCloudStatus(`שמירה לענן נכשלה: ${friendlyGitHubError(error.message)}`, "error");
   } finally {
     setCloudBusy(false);
+    updateCloudButtons();
   }
 }
 
@@ -450,9 +483,10 @@ async function downloadCloudData() {
     render();
     setCloudStatus("הנתונים נטענו מהענן.", "ok");
   } catch (error) {
-    setCloudStatus(`טעינה מהענן נכשלה: ${error.message}`, "error");
+    setCloudStatus(`טעינה מהענן נכשלה: ${friendlyGitHubError(error.message)}`, "error");
   } finally {
     setCloudBusy(false);
+    updateCloudButtons();
   }
 }
 
@@ -488,14 +522,26 @@ function getGitHubToken() {
 
 function setCloudBusy(value) {
   cloudBusy = value;
-  els.saveGithubToken.disabled = value;
-  els.uploadCloud.disabled = value || !getGitHubToken();
-  els.downloadCloud.disabled = value || !getGitHubToken() || !localStorage.getItem(CLOUD_GIST_KEY);
+  updateCloudButtons();
+}
+
+function updateCloudButtons() {
+  els.saveGithubToken.disabled = cloudBusy;
+  els.uploadCloud.disabled = cloudBusy || !getGitHubToken();
+  els.downloadCloud.disabled = cloudBusy || !getGitHubToken() || !localStorage.getItem(CLOUD_GIST_KEY);
 }
 
 function setCloudStatus(message, state) {
   els.cloudStatus.textContent = message;
   els.cloudStatus.dataset.state = state;
+}
+
+function friendlyGitHubError(message) {
+  if (message.includes("Bad credentials")) return "ה־token לא תקין או בוטל.";
+  if (message.includes("Requires authentication")) return "צריך token עם הרשאת gist.";
+  if (message.includes("Resource not accessible")) return "ל־token אין הרשאת gist.";
+  if (message.includes("API rate limit")) return "GitHub חסם זמנית בגלל יותר מדי בקשות.";
+  return message;
 }
 
 function isHabitDue(habit, date) {
