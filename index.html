@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f3ea" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="רצף" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>רצף - מעקב הרגלים</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="assets/icon-180.png" />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="todayLabel">היום</p>
+          <h1>רצף</h1>
+        </div>
+        <button class="icon-button" id="openAdd" type="button" aria-label="הוספת הרגל">
+          <span aria-hidden="true">+</span>
+        </button>
+      </header>
+
+      <main>
+        <section class="view active" id="view-today" aria-labelledby="todayTitle">
+          <div class="summary-panel">
+            <div>
+              <h2 id="todayTitle">המשימות של היום</h2>
+              <p id="todaySummary">טוען הרגלים...</p>
+            </div>
+            <div class="progress-ring" id="todayRing" aria-label="התקדמות יומית">
+              <span id="todayPercent">0%</span>
+            </div>
+          </div>
+
+          <div class="week-strip" id="weekStrip" aria-label="שבוע נוכחי"></div>
+          <div class="habit-list" id="todayHabits"></div>
+        </section>
+
+        <section class="view" id="view-habits" aria-labelledby="habitsTitle">
+          <div class="section-heading">
+            <div>
+              <h2 id="habitsTitle">כל ההרגלים</h2>
+              <p>עריכה, מחיקה ומעקב אחר רצפים.</p>
+            </div>
+            <button class="text-button" id="openAddSecondary" type="button">חדש</button>
+          </div>
+          <div class="habit-list" id="allHabits"></div>
+        </section>
+
+        <section class="view" id="view-insights" aria-labelledby="insightsTitle">
+          <div class="section-heading">
+            <div>
+              <h2 id="insightsTitle">תובנות</h2>
+              <p>מבט מהיר על השבוע והחודש.</p>
+            </div>
+          </div>
+          <div class="stats-grid" id="statsGrid"></div>
+          <div class="calendar-panel">
+            <div class="calendar-head">
+              <h3 id="monthTitle">החודש</h3>
+              <p>כל נקודה מייצגת יום עם לפחות הרגל אחד שבוצע.</p>
+            </div>
+            <div class="calendar-grid" id="monthGrid" aria-label="לוח חודש"></div>
+          </div>
+        </section>
+      </main>
+
+      <nav class="tabbar" aria-label="ניווט ראשי">
+        <button class="tab active" type="button" data-view="today">
+          <span aria-hidden="true">●</span>
+          <span>היום</span>
+        </button>
+        <button class="tab" type="button" data-view="habits">
+          <span aria-hidden="true">◧</span>
+          <span>הרגלים</span>
+        </button>
+        <button class="tab" type="button" data-view="insights">
+          <span aria-hidden="true">◌</span>
+          <span>תובנות</span>
+        </button>
+      </nav>
+    </div>
+
+    <dialog class="habit-dialog" id="habitDialog">
+      <form method="dialog" class="habit-form" id="habitForm">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow" id="dialogMode">הרגל חדש</p>
+            <h2>מה תרצה לבנות?</h2>
+          </div>
+          <button class="icon-button subtle" id="closeDialog" type="button" aria-label="סגירה">×</button>
+        </div>
+
+        <input type="hidden" id="habitId" />
+
+        <label>
+          שם ההרגל
+          <input id="habitName" name="name" maxlength="28" placeholder="למשל: הליכה של 20 דקות" required />
+        </label>
+
+        <label>
+          זמן ביום
+          <select id="habitTime" name="time">
+            <option value="בוקר">בוקר</option>
+            <option value="צהריים">צהריים</option>
+            <option value="ערב">ערב</option>
+            <option value="גמיש">גמיש</option>
+          </select>
+        </label>
+
+        <fieldset>
+          <legend>ימים פעילים</legend>
+          <div class="day-picker" id="dayPicker"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>צבע</legend>
+          <div class="color-picker" id="colorPicker"></div>
+        </fieldset>
+
+        <label>
+          תזכורת קצרה
+          <input id="habitNote" name="note" maxlength="42" placeholder="משפט קטן שיעזור להתחיל" />
+        </label>
+
+        <div class="dialog-actions">
+          <button class="primary-button" type="submit">שמירה</button>
+          <button class="ghost-button" id="deleteHabit" type="button">מחיקה</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,383 @@
+const STORAGE_KEY = "retzef-habits-v1";
+const dayLabels = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
+const colorOptions = ["#2f8f6f", "#4878c7", "#d86445", "#d7a528", "#7b62b3", "#2b8a9d", "#9a6a3a"];
+
+const els = {
+  todayLabel: document.querySelector("#todayLabel"),
+  todaySummary: document.querySelector("#todaySummary"),
+  todayRing: document.querySelector("#todayRing"),
+  todayPercent: document.querySelector("#todayPercent"),
+  weekStrip: document.querySelector("#weekStrip"),
+  todayHabits: document.querySelector("#todayHabits"),
+  allHabits: document.querySelector("#allHabits"),
+  statsGrid: document.querySelector("#statsGrid"),
+  monthGrid: document.querySelector("#monthGrid"),
+  monthTitle: document.querySelector("#monthTitle"),
+  dialog: document.querySelector("#habitDialog"),
+  form: document.querySelector("#habitForm"),
+  dialogMode: document.querySelector("#dialogMode"),
+  habitId: document.querySelector("#habitId"),
+  habitName: document.querySelector("#habitName"),
+  habitTime: document.querySelector("#habitTime"),
+  habitNote: document.querySelector("#habitNote"),
+  dayPicker: document.querySelector("#dayPicker"),
+  colorPicker: document.querySelector("#colorPicker"),
+  deleteHabit: document.querySelector("#deleteHabit"),
+};
+
+let habits = loadHabits();
+let selectedDays = [0, 1, 2, 3, 4, 5, 6];
+let selectedColor = colorOptions[0];
+
+function start() {
+  buildPickers();
+  bindEvents();
+  render();
+  registerServiceWorker();
+}
+
+function loadHabits() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  return [
+    {
+      id: crypto.randomUUID(),
+      name: "שתיית מים",
+      time: "בוקר",
+      note: "כוס אחת לפני הקפה",
+      days: [0, 1, 2, 3, 4, 5, 6],
+      color: "#2f8f6f",
+      records: {},
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "הליכה קצרה",
+      time: "ערב",
+      note: "גם 10 דקות נחשבות",
+      days: [0, 1, 2, 3, 4],
+      color: "#4878c7",
+      records: {},
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "קריאה",
+      time: "גמיש",
+      note: "עמוד אחד לפחות",
+      days: [0, 1, 2, 3, 4, 5, 6],
+      color: "#d86445",
+      records: {},
+      createdAt: new Date().toISOString(),
+    },
+  ];
+}
+
+function saveHabits() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(habits));
+}
+
+function bindEvents() {
+  document.querySelector("#openAdd").addEventListener("click", () => openHabitDialog());
+  document.querySelector("#openAddSecondary").addEventListener("click", () => openHabitDialog());
+  document.querySelector("#closeDialog").addEventListener("click", () => els.dialog.close());
+
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.addEventListener("click", () => setView(tab.dataset.view));
+  });
+
+  els.form.addEventListener("submit", handleSave);
+  els.deleteHabit.addEventListener("click", handleDelete);
+}
+
+function buildPickers() {
+  els.dayPicker.innerHTML = dayLabels
+    .map((label, index) => `<button class="day-toggle" type="button" data-day="${index}">${label}</button>`)
+    .join("");
+
+  els.colorPicker.innerHTML = colorOptions
+    .map(
+      (color) =>
+        `<button class="color-toggle" type="button" data-color="${color}" style="--swatch:${color}" aria-label="צבע ${color}"></button>`,
+    )
+    .join("");
+
+  els.dayPicker.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const day = Number(button.dataset.day);
+      selectedDays = selectedDays.includes(day)
+        ? selectedDays.filter((item) => item !== day)
+        : [...selectedDays, day].sort((a, b) => a - b);
+      if (!selectedDays.length) selectedDays = [day];
+      syncPickers();
+    });
+  });
+
+  els.colorPicker.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedColor = button.dataset.color;
+      syncPickers();
+    });
+  });
+}
+
+function setView(viewName) {
+  document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
+  document.querySelector(`#view-${viewName}`).classList.add("active");
+
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.view === viewName);
+  });
+}
+
+function render() {
+  const today = new Date();
+  const todayKey = dateKey(today);
+  const dueToday = habits.filter((habit) => isHabitDue(habit, today));
+  const doneToday = dueToday.filter((habit) => habit.records[todayKey]);
+  const percent = dueToday.length ? Math.round((doneToday.length / dueToday.length) * 100) : 0;
+
+  els.todayLabel.textContent = formatFullDate(today);
+  els.todaySummary.textContent = dueToday.length
+    ? `${doneToday.length} מתוך ${dueToday.length} הושלמו היום`
+    : "אין הרגלים מתוכננים להיום.";
+  els.todayPercent.textContent = `${percent}%`;
+  els.todayRing.style.setProperty("--progress", `${percent * 3.6}deg`);
+
+  renderWeek(today);
+  renderHabitList(els.todayHabits, dueToday, { todayOnly: true });
+  renderHabitList(els.allHabits, habits, { todayOnly: false });
+  renderInsights(today);
+  saveHabits();
+}
+
+function renderWeek(today) {
+  const sunday = addDays(today, -today.getDay());
+  els.weekStrip.innerHTML = "";
+
+  for (let index = 0; index < 7; index += 1) {
+    const day = addDays(sunday, index);
+    const key = dateKey(day);
+    const due = habits.filter((habit) => isHabitDue(habit, day));
+    const done = due.filter((habit) => habit.records[key]);
+    const pill = document.createElement("div");
+    pill.className = "day-pill";
+    pill.classList.toggle("today", key === dateKey(today));
+    pill.classList.toggle("done", due.length > 0 && done.length === due.length);
+    pill.innerHTML = `<span>${dayLabels[index]}</span><strong>${day.getDate()}</strong>`;
+    els.weekStrip.appendChild(pill);
+  }
+}
+
+function renderHabitList(container, items, options) {
+  container.innerHTML = "";
+
+  if (!items.length) {
+    container.innerHTML = `<div class="empty-state">אין כאן הרגלים עדיין. אפשר להוסיף הרגל קטן וברור בלחיצה על +.</div>`;
+    return;
+  }
+
+  items.forEach((habit) => {
+    const todayKey = dateKey(new Date());
+    const done = Boolean(habit.records[todayKey]);
+    const card = document.createElement("article");
+    card.className = "habit-card";
+    card.style.setProperty("--habit-color", habit.color);
+
+    const daysText = habit.days.length === 7 ? "כל יום" : habit.days.map((day) => dayLabels[day]).join(", ");
+    const note = habit.note ? ` · ${escapeText(habit.note)}` : "";
+    const actionLabel = done ? "סימון כלא בוצע" : "סימון כבוצע";
+
+    card.innerHTML = `
+      <button class="habit-mark ${done ? "done" : ""}" type="button" aria-label="${actionLabel}">
+        <span aria-hidden="true">${done ? "✓" : ""}</span>
+      </button>
+      <div class="habit-title">
+        <h3>${escapeText(habit.name)}</h3>
+        <p>${habit.time} · ${daysText}${note}</p>
+      </div>
+      <div class="habit-meta">
+        <span class="streak">${getStreak(habit)} ימים</span>
+        <button class="text-link" type="button">עריכה</button>
+      </div>
+    `;
+
+    card.querySelector(".habit-mark").addEventListener("click", () => toggleHabit(habit.id));
+    card.querySelector(".text-link").addEventListener("click", () => openHabitDialog(habit.id));
+
+    if (!options.todayOnly || isHabitDue(habit, new Date())) {
+      container.appendChild(card);
+    }
+  });
+}
+
+function renderInsights(today) {
+  const weekDates = Array.from({ length: 7 }, (_, index) => addDays(today, -index));
+  const dueInWeek = weekDates.flatMap((day) => habits.filter((habit) => isHabitDue(habit, day)).map((habit) => [habit, day]));
+  const doneInWeek = dueInWeek.filter(([habit, day]) => habit.records[dateKey(day)]).length;
+  const weekPercent = dueInWeek.length ? Math.round((doneInWeek / dueInWeek.length) * 100) : 0;
+  const bestHabit = [...habits].sort((a, b) => getStreak(b) - getStreak(a))[0];
+  const totalDone = habits.reduce((sum, habit) => sum + Object.values(habit.records).filter(Boolean).length, 0);
+  const activeDays = new Set(
+    habits.flatMap((habit) => Object.entries(habit.records).filter(([, done]) => done).map(([key]) => key)),
+  ).size;
+
+  els.statsGrid.innerHTML = `
+    <div class="stat-card"><strong>${weekPercent}%</strong><span>השלמה בשבעת הימים האחרונים</span></div>
+    <div class="stat-card"><strong>${bestHabit ? getStreak(bestHabit) : 0}</strong><span>הרצף הארוך הפעיל ביותר</span></div>
+    <div class="stat-card"><strong>${totalDone}</strong><span>סימונים שבוצעו בסך הכל</span></div>
+    <div class="stat-card"><strong>${activeDays}</strong><span>ימים עם התקדמות</span></div>
+  `;
+
+  renderMonth(today);
+}
+
+function renderMonth(today) {
+  const monthName = new Intl.DateTimeFormat("he-IL", { month: "long", year: "numeric" }).format(today);
+  els.monthTitle.textContent = monthName;
+  els.monthGrid.innerHTML = "";
+
+  const first = new Date(today.getFullYear(), today.getMonth(), 1);
+  const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+  for (let blank = 0; blank < first.getDay(); blank += 1) {
+    els.monthGrid.appendChild(document.createElement("span"));
+  }
+
+  for (let dayNumber = 1; dayNumber <= last.getDate(); dayNumber += 1) {
+    const day = new Date(today.getFullYear(), today.getMonth(), dayNumber);
+    const key = dateKey(day);
+    const hasProgress = habits.some((habit) => habit.records[key]);
+    const cell = document.createElement("div");
+    cell.className = "calendar-day";
+    cell.classList.toggle("has-progress", hasProgress);
+    cell.classList.toggle("today", key === dateKey(today));
+    cell.textContent = dayNumber;
+    els.monthGrid.appendChild(cell);
+  }
+}
+
+function toggleHabit(id) {
+  const habit = habits.find((item) => item.id === id);
+  if (!habit) return;
+  const key = dateKey(new Date());
+  habit.records[key] = !habit.records[key];
+  render();
+}
+
+function openHabitDialog(id = null) {
+  const habit = habits.find((item) => item.id === id);
+  els.form.reset();
+  els.habitId.value = habit?.id ?? "";
+  els.dialogMode.textContent = habit ? "עריכת הרגל" : "הרגל חדש";
+  els.deleteHabit.hidden = !habit;
+  selectedDays = habit ? [...habit.days] : [0, 1, 2, 3, 4, 5, 6];
+  selectedColor = habit?.color ?? colorOptions[0];
+  els.habitName.value = habit?.name ?? "";
+  els.habitTime.value = habit?.time ?? "בוקר";
+  els.habitNote.value = habit?.note ?? "";
+  syncPickers();
+  els.dialog.showModal();
+  els.habitName.focus();
+}
+
+function syncPickers() {
+  els.dayPicker.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("active", selectedDays.includes(Number(button.dataset.day)));
+  });
+
+  els.colorPicker.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.color === selectedColor);
+  });
+}
+
+function handleSave(event) {
+  event.preventDefault();
+  const id = els.habitId.value || crypto.randomUUID();
+  const existing = habits.find((habit) => habit.id === id);
+  const nextHabit = {
+    id,
+    name: els.habitName.value.trim(),
+    time: els.habitTime.value,
+    note: els.habitNote.value.trim(),
+    days: selectedDays,
+    color: selectedColor,
+    records: existing?.records ?? {},
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
+  };
+
+  habits = existing ? habits.map((habit) => (habit.id === id ? nextHabit : habit)) : [nextHabit, ...habits];
+  els.dialog.close();
+  render();
+}
+
+function handleDelete() {
+  const id = els.habitId.value;
+  if (!id) return;
+  habits = habits.filter((habit) => habit.id !== id);
+  els.dialog.close();
+  render();
+}
+
+function isHabitDue(habit, date) {
+  return habit.days.includes(date.getDay());
+}
+
+function getStreak(habit) {
+  let streak = 0;
+  let cursor = new Date();
+
+  for (let checked = 0; checked < 370; checked += 1) {
+    if (isHabitDue(habit, cursor)) {
+      if (!habit.records[dateKey(cursor)]) break;
+      streak += 1;
+    }
+    cursor = addDays(cursor, -1);
+  }
+
+  return streak;
+}
+
+function addDays(date, amount) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function dateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatFullDate(date) {
+  return new Intl.DateTimeFormat("he-IL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(date);
+}
+
+function escapeText(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function registerServiceWorker() {
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+}
+
+start();
