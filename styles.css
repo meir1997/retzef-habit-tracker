@@ -45,6 +45,12 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+a {
+  color: var(--blue);
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .app-shell {
   width: min(100%, 480px);
   min-height: 100vh;
@@ -354,11 +360,40 @@ main {
   line-height: 1.35;
 }
 
+.cloud-panel,
 .calendar-panel {
   padding: 15px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.cloud-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cloud-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.cloud-status {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cloud-status[data-state="ok"] {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.cloud-status[data-state="error"] {
+  color: var(--coral);
+  font-weight: 700;
 }
 
 .calendar-head {
@@ -555,6 +590,17 @@ select:focus {
   background: #f7e7e1;
 }
 
+.ghost-button.neutral {
+  color: var(--ink);
+  background: #f1ece0;
+}
+
+.primary-button:disabled,
+.ghost-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .ghost-button[hidden] {
   display: none;
 }
@@ -582,5 +628,9 @@ select:focus {
     grid-column: 2;
     justify-items: start;
     grid-auto-flow: column;
+  }
+
+  .cloud-actions {
+    grid-template-columns: 1fr;
   }
 }
