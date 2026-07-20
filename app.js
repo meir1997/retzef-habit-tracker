@@ -174,7 +174,6 @@ function render() {
   const doneSelected = dueSelected.filter((habit) => getRecordStatus(habit, selectedKey) === "done");
   const percent = dueSelected.length ? Math.round((doneSelected.length / dueSelected.length) * 100) : 0;
   const isToday = isSameDate(selected, today);
-  const firstAvailableDate = getTrackerStartDate();
 
   els.todayLabel.textContent = formatFullDate(selected);
   els.todayTitle.textContent = isToday ? "המשימות של היום" : "סימון יום נבחר";
@@ -183,6 +182,7 @@ function render() {
     : "אין הרגלים מתוכננים ליום הזה.";
   els.todayPercent.textContent = `${percent}%`;
   els.todayRing.style.setProperty("--progress", `${percent * 3.6}deg`);
+  const firstAvailableDate = getTrackerStartDate();
   els.prevDay.disabled = isSameDate(selected, firstAvailableDate);
   els.nextDay.disabled = isToday;
   els.goToday.disabled = isToday;
@@ -198,7 +198,7 @@ function render() {
 function renderDateStrip(selected, today, firstAvailableDate) {
   els.weekStrip.innerHTML = "";
 
-  for (let day = startOfDay(today); day >= firstAvailableDate; day = addDays(day, -1)) {
+  for (let day = startOfDay(firstAvailableDate); day <= startOfDay(today); day = addDays(day, 1)) {
     const key = dateKey(day);
     const due = habits.filter((habit) => isHabitDue(habit, day));
     const done = due.filter((habit) => getRecordStatus(habit, key) === "done");
