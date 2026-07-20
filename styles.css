@@ -53,6 +53,7 @@ a {
 
 .app-shell {
   width: min(100%, 480px);
+  min-width: 0;
   min-height: 100vh;
   margin: 0 auto;
   padding: calc(env(safe-area-inset-top) + 18px) 18px calc(env(safe-area-inset-bottom) + 92px);
@@ -129,10 +130,12 @@ h3 {
 
 main {
   display: grid;
+  min-width: 0;
 }
 
 .view {
   display: none;
+  min-width: 0;
 }
 
 .view.active {
@@ -217,14 +220,28 @@ main {
 }
 
 .week-strip {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   gap: 7px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 0 2px 8px;
   margin: 0 0 16px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.week-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .day-pill {
+  flex: 0 0 54px;
   min-width: 0;
+  width: 54px;
   height: 62px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -235,6 +252,7 @@ main {
   align-content: center;
   gap: 4px;
   cursor: pointer;
+  scroll-snap-align: center;
 }
 
 .day-pill strong {
