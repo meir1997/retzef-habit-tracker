@@ -1,9 +1,9 @@
-const CACHE_NAME = "retzef-v8";
+const CACHE_NAME = "retzef-v9";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=2",
-  "./app.js?v=6",
+  "./styles.css?v=3",
+  "./app.js?v=7",
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./assets/icon-180.png",
