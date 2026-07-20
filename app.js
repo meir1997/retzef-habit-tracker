@@ -8,9 +8,13 @@ const colorOptions = ["#2f8f6f", "#4878c7", "#d86445", "#d7a528", "#7b62b3", "#2
 
 const els = {
   todayLabel: document.querySelector("#todayLabel"),
+  todayTitle: document.querySelector("#todayTitle"),
   todaySummary: document.querySelector("#todaySummary"),
   todayRing: document.querySelector("#todayRing"),
   todayPercent: document.querySelector("#todayPercent"),
+  prevDay: document.querySelector("#prevDay"),
+  goToday: document.querySelector("#goToday"),
+  nextDay: document.querySelector("#nextDay"),
   weekStrip: document.querySelector("#weekStrip"),
   todayHabits: document.querySelector("#todayHabits"),
   allHabits: document.querySelector("#allHabits"),
@@ -40,6 +44,7 @@ const els = {
 };
 
 let habits = loadHabits();
+let selectedDate = startOfDay(new Date());
 let selectedDays = [0, 1, 2, 3, 4, 5, 6];
 let selectedColor = colorOptions[0];
 let cloudTimer = null;
@@ -105,6 +110,9 @@ function bindEvents() {
   document.querySelector("#openAddSecondary").addEventListener("click", () => openHabitDialog());
   document.querySelector("#closeDialog").addEventListener("click", () => els.dialog.close());
   els.closeStatsDialog.addEventListener("click", () => els.statsDialog.close());
+  els.prevDay.addEventListener("click", () => setSelectedDate(addDays(selectedDate, -1)));
+  els.goToday.addEventListener("click", () => setSelectedDate(new Date()));
+  els.nextDay.addEventListener("click", () => setSelectedDate(addDays(selectedDate, 1)));
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => setView(tab.dataset.view));
@@ -159,28 +167,33 @@ function setView(viewName) {
 
 function render() {
   const today = new Date();
-  const todayKey = dateKey(today);
-  const dueToday = habits.filter((habit) => isHabitDue(habit, today));
-  const doneToday = dueToday.filter((habit) => getRecordStatus(habit, todayKey) === "done");
-  const percent = dueToday.length ? Math.round((doneToday.length / dueToday.length) * 100) : 0;
+  const selected = startOfDay(selectedDate);
+  const selectedKey = dateKey(selected);
+  const dueSelected = habits.filter((habit) => isHabitDue(habit, selected));
+  const doneSelected = dueSelected.filter((habit) => getRecordStatus(habit, selectedKey) === "done");
+  const percent = dueSelected.length ? Math.round((doneSelected.length / dueSelected.length) * 100) : 0;
+  const isToday = isSameDate(selected, today);
 
-  els.todayLabel.textContent = formatFullDate(today);
-  els.todaySummary.textContent = dueToday.length
-    ? `${doneToday.length} מתוך ${dueToday.length} הושלמו היום`
-    : "אין הרגלים מתוכננים להיום.";
+  els.todayLabel.textContent = formatFullDate(selected);
+  els.todayTitle.textContent = isToday ? "המשימות של היום" : "סימון יום נבחר";
+  els.todaySummary.textContent = dueSelected.length
+    ? `${doneSelected.length} מתוך ${dueSelected.length} סומנו בהצלחה ביום הזה`
+    : "אין הרגלים מתוכננים ליום הזה.";
   els.todayPercent.textContent = `${percent}%`;
   els.todayRing.style.setProperty("--progress", `${percent * 3.6}deg`);
+  els.nextDay.disabled = isToday;
+  els.goToday.disabled = isToday;
 
-  renderWeek(today);
-  renderHabitList(els.todayHabits, dueToday, { todayOnly: true });
-  renderHabitList(els.allHabits, habits, { todayOnly: false });
+  renderWeek(selected, today);
+  renderHabitList(els.todayHabits, dueSelected, { todayOnly: true, date: selected });
+  renderHabitList(els.allHabits, habits, { todayOnly: false, date: today });
   renderInsights(today);
   renderCloudPanel();
   saveHabits();
 }
 
-function renderWeek(today) {
-  const sunday = addDays(today, -today.getDay());
+function renderWeek(selected, today) {
+  const sunday = addDays(selected, -selected.getDay());
   els.weekStrip.innerHTML = "";
 
   for (let index = 0; index < 7; index += 1) {
@@ -188,11 +201,16 @@ function renderWeek(today) {
     const key = dateKey(day);
     const due = habits.filter((habit) => isHabitDue(habit, day));
     const done = due.filter((habit) => getRecordStatus(habit, key) === "done");
-    const pill = document.createElement("div");
+    const pill = document.createElement("button");
     pill.className = "day-pill";
+    pill.type = "button";
+    pill.disabled = isFutureDate(day);
+    pill.classList.toggle("selected", key === dateKey(selected));
     pill.classList.toggle("today", key === dateKey(today));
     pill.classList.toggle("done", due.length > 0 && done.length === due.length);
+    pill.setAttribute("aria-label", `בחירת ${formatFullDate(day)}`);
     pill.innerHTML = `<span>${dayLabels[index]}</span><strong>${day.getDate()}</strong>`;
+    pill.addEventListener("click", () => setSelectedDate(day));
     els.weekStrip.appendChild(pill);
   }
 }
@@ -206,8 +224,10 @@ function renderHabitList(container, items, options) {
   }
 
   items.forEach((habit) => {
-    const todayKey = dateKey(new Date());
-    const status = getRecordStatus(habit, todayKey);
+    const listDate = startOfDay(options.date ?? new Date());
+    const key = dateKey(listDate);
+    const canMark = isHabitDue(habit, listDate) && !isFutureDate(listDate);
+    const status = getRecordStatus(habit, key);
     const done = status === "done";
     const missed = status === "missed";
     const card = document.createElement("article");
@@ -216,16 +236,16 @@ function renderHabitList(container, items, options) {
 
     const daysText = habit.days.length === 7 ? "כל יום" : habit.days.map((day) => dayLabels[day]).join(", ");
     const note = habit.note ? ` · ${escapeText(habit.note)}` : "";
-    const doneLabel = done ? "ביטול סימון בוצע" : "סימון כבוצע";
-    const missedLabel = missed ? "ביטול סימון X" : "סימון X";
+    const doneLabel = canMark ? (done ? "ביטול סימון בוצע" : "סימון כבוצע") : "ההרגל לא מתוכנן ליום הזה";
+    const missedLabel = canMark ? (missed ? "ביטול סימון X" : "סימון X") : "ההרגל לא מתוכנן ליום הזה";
     const stats = getHabitStats(habit);
 
     card.innerHTML = `
       <div class="habit-actions">
-        <button class="habit-mark ${done ? "done" : ""}" type="button" data-action="done" aria-label="${doneLabel}">
+        <button class="habit-mark ${done ? "done" : ""}" type="button" data-action="done" aria-label="${doneLabel}" ${canMark ? "" : "disabled"}>
           <span aria-hidden="true">✓</span>
         </button>
-        <button class="habit-mark miss ${missed ? "missed" : ""}" type="button" data-action="missed" aria-label="${missedLabel}">
+        <button class="habit-mark miss ${missed ? "missed" : ""}" type="button" data-action="missed" aria-label="${missedLabel}" ${canMark ? "" : "disabled"}>
           <span aria-hidden="true">×</span>
         </button>
       </div>
@@ -240,12 +260,12 @@ function renderHabitList(container, items, options) {
       </div>
     `;
 
-    card.querySelector('[data-action="done"]').addEventListener("click", () => setHabitStatus(habit.id, "done"));
-    card.querySelector('[data-action="missed"]').addEventListener("click", () => setHabitStatus(habit.id, "missed"));
+    card.querySelector('[data-action="done"]').addEventListener("click", () => setHabitStatus(habit.id, "done", listDate));
+    card.querySelector('[data-action="missed"]').addEventListener("click", () => setHabitStatus(habit.id, "missed", listDate));
     card.querySelector(".text-link").addEventListener("click", () => openHabitDialog(habit.id));
     card.querySelector('[data-action="stats"]').addEventListener("click", () => openStatsDialog(habit.id));
 
-    if (!options.todayOnly || isHabitDue(habit, new Date())) {
+    if (!options.todayOnly || isHabitDue(habit, listDate)) {
       container.appendChild(card);
     }
   });
@@ -297,10 +317,12 @@ function renderMonth(today) {
   }
 }
 
-function setHabitStatus(id, nextStatus) {
+function setHabitStatus(id, nextStatus, date = selectedDate) {
   const habit = habits.find((item) => item.id === id);
   if (!habit) return;
-  const key = dateKey(new Date());
+  const targetDate = startOfDay(date);
+  if (!isHabitDue(habit, targetDate) || isFutureDate(targetDate)) return;
+  const key = dateKey(targetDate);
   const currentStatus = getRecordStatus(habit, key);
   if (currentStatus === nextStatus) {
     delete habit.records[key];
@@ -309,6 +331,13 @@ function setHabitStatus(id, nextStatus) {
   }
   render();
   scheduleCloudUpload();
+}
+
+function setSelectedDate(date) {
+  const nextDate = startOfDay(date);
+  if (isFutureDate(nextDate)) return;
+  selectedDate = nextDate;
+  render();
 }
 
 function openStatsDialog(id) {
@@ -688,6 +717,18 @@ function addDays(date, amount) {
   const next = new Date(date);
   next.setDate(next.getDate() + amount);
   return next;
+}
+
+function startOfDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isSameDate(first, second) {
+  return dateKey(first) === dateKey(second);
+}
+
+function isFutureDate(date) {
+  return startOfDay(date) > startOfDay(new Date());
 }
 
 function dateKey(date) {
