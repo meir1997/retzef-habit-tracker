@@ -167,12 +167,14 @@ function setView(viewName) {
 
 function render() {
   const today = new Date();
+  selectedDate = clampDateToTrackerRange(selectedDate);
   const selected = startOfDay(selectedDate);
   const selectedKey = dateKey(selected);
   const dueSelected = habits.filter((habit) => isHabitDue(habit, selected));
   const doneSelected = dueSelected.filter((habit) => getRecordStatus(habit, selectedKey) === "done");
   const percent = dueSelected.length ? Math.round((doneSelected.length / dueSelected.length) * 100) : 0;
   const isToday = isSameDate(selected, today);
+  const firstAvailableDate = getTrackerStartDate();
 
   els.todayLabel.textContent = formatFullDate(selected);
   els.todayTitle.textContent = isToday ? "המשימות של היום" : "סימון יום נבחר";
@@ -181,10 +183,11 @@ function render() {
     : "אין הרגלים מתוכננים ליום הזה.";
   els.todayPercent.textContent = `${percent}%`;
   els.todayRing.style.setProperty("--progress", `${percent * 3.6}deg`);
+  els.prevDay.disabled = isSameDate(selected, firstAvailableDate);
   els.nextDay.disabled = isToday;
   els.goToday.disabled = isToday;
 
-  renderWeek(selected, today);
+  renderDateStrip(selected, today, firstAvailableDate);
   renderHabitList(els.todayHabits, dueSelected, { todayOnly: true, date: selected });
   renderHabitList(els.allHabits, habits, { todayOnly: false, date: today });
   renderInsights(today);
@@ -192,27 +195,32 @@ function render() {
   saveHabits();
 }
 
-function renderWeek(selected, today) {
-  const sunday = addDays(selected, -selected.getDay());
+function renderDateStrip(selected, today, firstAvailableDate) {
   els.weekStrip.innerHTML = "";
 
-  for (let index = 0; index < 7; index += 1) {
-    const day = addDays(sunday, index);
+  for (let day = startOfDay(today); day >= firstAvailableDate; day = addDays(day, -1)) {
     const key = dateKey(day);
     const due = habits.filter((habit) => isHabitDue(habit, day));
     const done = due.filter((habit) => getRecordStatus(habit, key) === "done");
     const pill = document.createElement("button");
     pill.className = "day-pill";
     pill.type = "button";
-    pill.disabled = isFutureDate(day);
     pill.classList.toggle("selected", key === dateKey(selected));
     pill.classList.toggle("today", key === dateKey(today));
     pill.classList.toggle("done", due.length > 0 && done.length === due.length);
     pill.setAttribute("aria-label", `בחירת ${formatFullDate(day)}`);
-    pill.innerHTML = `<span>${dayLabels[index]}</span><strong>${day.getDate()}</strong>`;
+    pill.innerHTML = `<span>${dayLabels[day.getDay()]}</span><strong>${day.getDate()}</strong>`;
     pill.addEventListener("click", () => setSelectedDate(day));
     els.weekStrip.appendChild(pill);
   }
+
+  window.requestAnimationFrame(() => {
+    els.weekStrip.querySelector(".day-pill.selected")?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: "smooth",
+    });
+  });
 }
 
 function renderHabitList(container, items, options) {
@@ -334,9 +342,7 @@ function setHabitStatus(id, nextStatus, date = selectedDate) {
 }
 
 function setSelectedDate(date) {
-  const nextDate = startOfDay(date);
-  if (isFutureDate(nextDate)) return;
-  selectedDate = nextDate;
+  selectedDate = clampDateToTrackerRange(date);
   render();
 }
 
@@ -717,6 +723,25 @@ function addDays(date, amount) {
   const next = new Date(date);
   next.setDate(next.getDate() + amount);
   return next;
+}
+
+function getTrackerStartDate() {
+  const dates = habits.flatMap((habit) => [
+    habit.createdAt ? startOfDay(new Date(habit.createdAt)) : null,
+    ...Object.keys(habit.records ?? {}).map(parseDateKey),
+  ]);
+  const validDates = dates.filter((date) => date instanceof Date && !Number.isNaN(date.getTime()));
+  if (!validDates.length) return startOfDay(new Date());
+  return startOfDay(new Date(Math.min(...validDates.map((date) => date.getTime()))));
+}
+
+function clampDateToTrackerRange(date) {
+  const nextDate = startOfDay(date);
+  const firstDate = getTrackerStartDate();
+  const today = startOfDay(new Date());
+  if (nextDate < firstDate) return firstDate;
+  if (nextDate > today) return today;
+  return nextDate;
 }
 
 function startOfDay(date) {
