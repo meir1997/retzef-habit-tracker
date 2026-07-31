@@ -2,6 +2,7 @@ const STORAGE_KEY = "retzef-habits-v1";
 const CLOUD_TOKEN_KEY = "retzef-github-token-v1";
 const CLOUD_GIST_KEY = "retzef-github-gist-id-v1";
 const CLOUD_FILE_NAME = "retzef-habit-data.json";
+const LOCAL_UPDATED_KEY = "retzef-local-updated-at-v1";
 const GOAL_DAYS = [7, 30, 60, 100];
 const dayLabels = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 const colorOptions = ["#2f8f6f", "#4878c7", "#d86445", "#d7a528", "#7b62b3", "#2b8a9d", "#9a6a3a"];
@@ -19,6 +20,14 @@ const els = {
   todayHabits: document.querySelector("#todayHabits"),
   allHabits: document.querySelector("#allHabits"),
   statsGrid: document.querySelector("#statsGrid"),
+  googleAccount: document.querySelector("#googleAccount"),
+  googleAvatar: document.querySelector("#googleAvatar"),
+  googleName: document.querySelector("#googleName"),
+  googleEmail: document.querySelector("#googleEmail"),
+  connectGoogle: document.querySelector("#connectGoogle"),
+  syncGoogle: document.querySelector("#syncGoogle"),
+  disconnectGoogle: document.querySelector("#disconnectGoogle"),
+  googleCloudStatus: document.querySelector("#googleCloudStatus"),
   githubToken: document.querySelector("#githubToken"),
   saveGithubToken: document.querySelector("#saveGithubToken"),
   uploadCloud: document.querySelector("#uploadCloud"),
@@ -49,11 +58,16 @@ let selectedDays = [0, 1, 2, 3, 4, 5, 6];
 let selectedColor = colorOptions[0];
 let cloudTimer = null;
 let cloudBusy = false;
+let googleTimer = null;
+let googleBusy = false;
+let googleUser = null;
+let googleCloudReady = false;
 
 function start() {
   buildPickers();
   bindEvents();
   render();
+  initializeGoogleCloud();
   registerServiceWorker();
 }
 
@@ -120,6 +134,9 @@ function bindEvents() {
 
   els.form.addEventListener("submit", handleSave);
   els.deleteHabit.addEventListener("click", handleDelete);
+  els.connectGoogle.addEventListener("click", handleConnectGoogle);
+  els.syncGoogle.addEventListener("click", () => reconcileGoogleCloud({ manual: true }));
+  els.disconnectGoogle.addEventListener("click", handleDisconnectGoogle);
   els.saveGithubToken.addEventListener("click", handleSaveGithubToken);
   els.uploadCloud.addEventListener("click", () => uploadCloudData({ manual: true }));
   els.downloadCloud.addEventListener("click", downloadCloudData);
@@ -337,6 +354,7 @@ function setHabitStatus(id, nextStatus, date = selectedDate) {
   } else {
     habit.records[key] = nextStatus === "done" ? true : "missed";
   }
+  touchLocalData();
   render();
   scheduleCloudUpload();
 }
@@ -421,6 +439,7 @@ function handleSave(event) {
 
   habits = existing ? habits.map((habit) => (habit.id === id ? nextHabit : habit)) : [nextHabit, ...habits];
   els.dialog.close();
+  touchLocalData();
   render();
   scheduleCloudUpload();
 }
@@ -430,8 +449,181 @@ function handleDelete() {
   if (!id) return;
   habits = habits.filter((habit) => habit.id !== id);
   els.dialog.close();
+  touchLocalData();
   render();
   scheduleCloudUpload();
+}
+
+function initializeGoogleCloud() {
+  const firebase = window.retzefFirebase;
+  if (!firebase) {
+    window.addEventListener("retzef-firebase-ready", initializeGoogleCloud, { once: true });
+    return;
+  }
+
+  googleCloudReady = firebase.configured;
+  if (!firebase.configured) {
+    setGoogleCloudStatus("החיבור ל־Google עדיין לא הושלם.", "error");
+    updateGoogleCloudPanel();
+    return;
+  }
+
+  firebase.onUserChanged((user) => {
+    googleUser = user;
+    updateGoogleCloudPanel();
+    if (user && !googleBusy) reconcileGoogleCloud({ manual: false });
+  });
+}
+
+async function handleConnectGoogle() {
+  const firebase = window.retzefFirebase;
+  if (!firebase?.configured || googleBusy) return;
+
+  setGoogleBusy(true);
+  setGoogleCloudStatus("פותח התחברות מאובטחת של Google...", "idle");
+  try {
+    googleUser = await firebase.signIn();
+    updateGoogleCloudPanel();
+  } catch (error) {
+    setGoogleCloudStatus(`ההתחברות נכשלה: ${friendlyFirebaseError(error)}`, "error");
+    return;
+  } finally {
+    setGoogleBusy(false);
+  }
+
+  await reconcileGoogleCloud({ manual: false });
+}
+
+async function handleDisconnectGoogle() {
+  const firebase = window.retzefFirebase;
+  if (!firebase || googleBusy) return;
+  setGoogleBusy(true);
+  try {
+    await firebase.signOut();
+    googleUser = null;
+    setGoogleCloudStatus("התנתקת מ־Google. הנתונים נשארו שמורים במכשיר.", "idle");
+  } catch (error) {
+    setGoogleCloudStatus(`ההתנתקות נכשלה: ${friendlyFirebaseError(error)}`, "error");
+  } finally {
+    setGoogleBusy(false);
+    updateGoogleCloudPanel();
+  }
+}
+
+async function reconcileGoogleCloud({ manual }) {
+  const firebase = window.retzefFirebase;
+  if (!firebase?.configured || !googleUser || googleBusy) return;
+
+  setGoogleBusy(true);
+  setGoogleCloudStatus("מסנכרן עם Google...", "idle");
+  try {
+    const remote = await firebase.download();
+    const localUpdatedAt = localStorage.getItem(LOCAL_UPDATED_KEY);
+
+    if (!remote) {
+      const payload = createCloudPayload();
+      await firebase.upload(payload);
+      setGoogleCloudStatus("הנתונים נשמרו ב־Google.", "ok");
+      return;
+    }
+
+    if (!Array.isArray(remote.habits)) throw new Error("נתוני הענן אינם תקינים.");
+
+    const remoteTime = Date.parse(remote.updatedAt ?? "") || 0;
+    const localTime = Date.parse(localUpdatedAt ?? "") || 0;
+
+    if (remoteTime > localTime) {
+      applyCloudPayload(remote);
+      setGoogleCloudStatus("הנתונים העדכניים נטענו מ־Google.", "ok");
+    } else if (localTime > remoteTime) {
+      await firebase.upload(createCloudPayload());
+      setGoogleCloudStatus("השינויים נשמרו ב־Google.", "ok");
+    } else {
+      setGoogleCloudStatus(manual ? "הכול מעודכן בכל המכשירים." : "מחובר ומסונכרן עם Google.", "ok");
+    }
+  } catch (error) {
+    setGoogleCloudStatus(`הסנכרון נכשל: ${friendlyFirebaseError(error)}`, "error");
+  } finally {
+    setGoogleBusy(false);
+    updateGoogleCloudPanel();
+  }
+}
+
+async function uploadGoogleData({ manual }) {
+  const firebase = window.retzefFirebase;
+  if (!firebase?.configured || !googleUser || googleBusy) return;
+
+  setGoogleBusy(true);
+  if (manual) setGoogleCloudStatus("שומר ב־Google...", "idle");
+  try {
+    await firebase.upload(createCloudPayload());
+    setGoogleCloudStatus(manual ? "נשמר ב־Google בהצלחה." : "סונכרן עם Google.", "ok");
+  } catch (error) {
+    setGoogleCloudStatus(`השמירה ב־Google נכשלה: ${friendlyFirebaseError(error)}`, "error");
+  } finally {
+    setGoogleBusy(false);
+    updateGoogleCloudPanel();
+  }
+}
+
+function createCloudPayload() {
+  const updatedAt = localStorage.getItem(LOCAL_UPDATED_KEY) || new Date().toISOString();
+  localStorage.setItem(LOCAL_UPDATED_KEY, updatedAt);
+  return {
+    app: "retzef",
+    version: 2,
+    updatedAt,
+    habits,
+  };
+}
+
+function applyCloudPayload(payload) {
+  habits = payload.habits;
+  localStorage.setItem(LOCAL_UPDATED_KEY, payload.updatedAt || new Date().toISOString());
+  saveHabits();
+  render();
+}
+
+function touchLocalData() {
+  localStorage.setItem(LOCAL_UPDATED_KEY, new Date().toISOString());
+}
+
+function updateGoogleCloudPanel() {
+  const connected = Boolean(googleUser);
+  els.googleAccount.hidden = !connected;
+  els.connectGoogle.hidden = connected;
+  els.syncGoogle.hidden = !connected;
+  els.disconnectGoogle.hidden = !connected;
+  els.connectGoogle.disabled = googleBusy || !googleCloudReady;
+  els.syncGoogle.disabled = googleBusy;
+  els.disconnectGoogle.disabled = googleBusy;
+  els.connectGoogle.parentElement.classList.toggle("connected", connected);
+
+  if (connected) {
+    els.googleName.textContent = googleUser.displayName || "חשבון Google";
+    els.googleEmail.textContent = googleUser.email || "";
+    els.googleAvatar.src = googleUser.photoURL || "";
+  }
+}
+
+function setGoogleBusy(value) {
+  googleBusy = value;
+  updateGoogleCloudPanel();
+}
+
+function setGoogleCloudStatus(message, state) {
+  els.googleCloudStatus.textContent = message;
+  els.googleCloudStatus.dataset.state = state;
+}
+
+function friendlyFirebaseError(error) {
+  const code = error?.code ?? "";
+  if (code.includes("popup-closed-by-user")) return "חלון ההתחברות נסגר לפני הסיום.";
+  if (code.includes("popup-blocked")) return "הדפדפן חסם את חלון ההתחברות.";
+  if (code.includes("unauthorized-domain")) return "כתובת האפליקציה עדיין לא מורשית ב־Firebase.";
+  if (code.includes("permission-denied")) return "אין הרשאה לקרוא או לשמור את הנתונים.";
+  if (code.includes("network-request-failed") || code.includes("unavailable")) return "אין כרגע חיבור תקין לאינטרנט.";
+  return error?.message || "אירעה שגיאה לא צפויה.";
 }
 
 function renderCloudPanel() {
@@ -499,9 +691,14 @@ async function findCloudGist(token) {
 }
 
 function scheduleCloudUpload() {
-  if (!getGitHubToken()) return;
-  window.clearTimeout(cloudTimer);
-  cloudTimer = window.setTimeout(() => uploadCloudData({ manual: false }), 900);
+  if (getGitHubToken()) {
+    window.clearTimeout(cloudTimer);
+    cloudTimer = window.setTimeout(() => uploadCloudData({ manual: false }), 900);
+  }
+  if (googleUser) {
+    window.clearTimeout(googleTimer);
+    googleTimer = window.setTimeout(() => uploadGoogleData({ manual: false }), 900);
+  }
 }
 
 async function uploadCloudData({ manual }) {
