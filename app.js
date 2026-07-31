@@ -624,6 +624,11 @@ function friendlyFirebaseError(error) {
   const code = error?.code ?? "";
   if (code.includes("popup-closed-by-user")) return "חלון ההתחברות נסגר לפני הסיום.";
   if (code.includes("popup-blocked")) return "הדפדפן חסם את חלון ההתחברות.";
+  if (code.includes("cancelled-popup-request")) return "חלון התחברות אחר כבר פתוח.";
+  if (code.includes("web-storage-unsupported")) return "הדפדפן חוסם שמירת התחברות. יש לאפשר קובצי Cookie.";
+  if (code.includes("operation-not-supported-in-this-environment")) {
+    return "לא ניתן לפתוח התחברות במצב הגלישה הנוכחי. יש לפתוח את האתר ישירות ב־Safari.";
+  }
   if (code.includes("unauthorized-domain")) return "כתובת האפליקציה עדיין לא מורשית ב־Firebase.";
   if (code.includes("permission-denied")) return "אין הרשאה לקרוא או לשמור את הנתונים.";
   if (code.includes("network-request-failed") || code.includes("unavailable")) return "אין כרגע חיבור תקין לאינטרנט.";
@@ -992,3 +997,4 @@ function registerServiceWorker() {
 }
 
 start();
+
