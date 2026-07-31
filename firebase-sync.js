@@ -1,10 +1,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
 import {
-  browserLocalPersistence,
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
-  setPersistence,
   signInWithPopup,
   signOut,
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
@@ -34,7 +32,6 @@ function notify(user) {
 
 async function signIn() {
   if (!configured) throw new Error("Firebase עדיין לא מוגדר.");
-  await setPersistence(auth, browserLocalPersistence);
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
   const result = await signInWithPopup(auth, provider);
@@ -88,3 +85,4 @@ if (configured) {
 }
 
 window.dispatchEvent(new CustomEvent("retzef-firebase-ready"));
+
