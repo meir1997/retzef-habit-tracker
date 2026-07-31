@@ -1,10 +1,10 @@
-const CACHE_NAME = "retzef-v13";
+const CACHE_NAME = "retzef-v14";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css?v=5",
   "./firebase-config.js?v=1",
-  "./firebase-sync.js?v=1",
+  "./firebase-sync.js?v=2",
   "./app.js?v=11",
   "./manifest.webmanifest",
   "./assets/icon.svg",
@@ -34,3 +34,4 @@ self.addEventListener("fetch", (event) => {
   }
   event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
 });
+
