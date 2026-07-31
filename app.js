@@ -471,7 +471,11 @@ function initializeGoogleCloud() {
   firebase.onUserChanged((user) => {
     googleUser = user;
     updateGoogleCloudPanel();
-    if (user && !googleBusy) reconcileGoogleCloud({ manual: false });
+    if (user && !googleBusy) {
+      reconcileGoogleCloud({ manual: false });
+    } else if (!user && !googleBusy) {
+      setGoogleCloudStatus("לא מחובר. אפשר להתחבר עם חשבון Google כדי לסנכרן בין המכשירים.", "idle");
+    }
   });
 }
 
