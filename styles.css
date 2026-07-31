@@ -505,6 +505,77 @@ main {
   margin-bottom: 14px;
 }
 
+.google-account {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.google-account[hidden] {
+  display: none;
+}
+
+.google-account img {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #f1ece0;
+}
+
+.google-account div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.google-account strong,
+.google-account span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.google-account span {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.google-actions {
+  grid-template-columns: 1fr;
+}
+
+.google-actions.connected {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.legacy-sync {
+  margin-bottom: 14px;
+  border-block: 1px solid var(--line);
+}
+
+.legacy-sync summary {
+  padding: 14px 2px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.legacy-sync-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 2px 15px;
+}
+
+.legacy-sync-body > p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .cloud-actions {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
