@@ -13,6 +13,9 @@ const els = {
   todaySummary: document.querySelector("#todaySummary"),
   todayRing: document.querySelector("#todayRing"),
   todayPercent: document.querySelector("#todayPercent"),
+  scoreValue: document.querySelector("#scoreValue"),
+  scoreDone: document.querySelector("#scoreDone"),
+  scoreMissed: document.querySelector("#scoreMissed"),
   prevDay: document.querySelector("#prevDay"),
   goToday: document.querySelector("#goToday"),
   nextDay: document.querySelector("#nextDay"),
@@ -205,11 +208,19 @@ function render() {
   els.goToday.disabled = isToday;
 
   renderDateStrip(selected, today, firstAvailableDate);
+  renderScore(today);
   renderHabitList(els.todayHabits, dueSelected, { todayOnly: true, date: selected });
   renderHabitList(els.allHabits, habits, { todayOnly: false, date: today });
   renderInsights(today);
   renderCloudPanel();
   saveHabits();
+}
+
+function renderScore(today) {
+  const summary = getScoreSummary(today);
+  els.scoreValue.textContent = summary.score.toLocaleString("he-IL");
+  els.scoreDone.textContent = summary.done.toLocaleString("he-IL");
+  els.scoreMissed.textContent = summary.missed.toLocaleString("he-IL");
 }
 
 function renderDateStrip(selected, today, firstAvailableDate) {
@@ -908,6 +919,22 @@ function countRecords(habit, status) {
   return Object.values(habit.records ?? {}).filter((record) =>
     status === "done" ? isDoneRecord(record) : isMissedRecord(record),
   ).length;
+}
+
+function getScoreSummary(untilDate = new Date()) {
+  const lastKey = dateKey(startOfDay(untilDate));
+  let done = 0;
+  let missed = 0;
+
+  habits.forEach((habit) => {
+    Object.entries(habit.records ?? {}).forEach(([key, record]) => {
+      if (key > lastKey) return;
+      if (isDoneRecord(record)) done += 1;
+      if (isMissedRecord(record)) missed += 1;
+    });
+  });
+
+  return { done, missed, score: done - missed * 10 };
 }
 
 function getRecordStatus(habit, key) {
