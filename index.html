@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icon-180.png" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=6" />
   </head>
   <body>
     <div class="app-shell">
@@ -27,6 +27,21 @@
 
       <main>
         <section class="view active" id="view-today" aria-labelledby="todayTitle">
+          <section class="score-panel" aria-labelledby="scoreTitle">
+            <div class="score-total">
+              <span id="scoreTitle">הניקוד שלי</span>
+              <strong id="scoreValue" dir="ltr" aria-live="polite">0</strong>
+            </div>
+            <div class="score-breakdown" aria-label="פירוט הניקוד">
+              <span class="score-done"><b id="scoreDone">0</b> סימוני ✓</span>
+              <span class="score-missed"><b id="scoreMissed">0</b> סימוני X</span>
+            </div>
+            <div class="score-rules" aria-label="כללי הניקוד">
+              <span>✓ <b dir="ltr">+1</b></span>
+              <span>X <b dir="ltr">-10</b></span>
+            </div>
+          </section>
+
           <div class="summary-panel">
             <div>
               <h2 id="todayTitle">המשימות של היום</h2>
@@ -194,7 +209,7 @@
 
     <script src="firebase-config.js?v=1"></script>
     <script type="module" src="firebase-sync.js?v=2"></script>
-    <script src="app.js?v=11"></script>
+    <script src="app.js?v=12"></script>
   </body>
 </html>
 
