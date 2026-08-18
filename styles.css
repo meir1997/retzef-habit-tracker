@@ -142,6 +142,82 @@ main {
   display: block;
 }
 
+.score-panel {
+  display: grid;
+  grid-template-columns: minmax(112px, 0.9fr) minmax(0, 1.35fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(35, 35, 31, 0.12);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: white;
+  box-shadow: var(--shadow);
+}
+
+.score-total {
+  display: grid;
+  gap: 2px;
+}
+
+.score-total span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.score-total strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 34px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score-breakdown {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.score-breakdown span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score-done {
+  color: #75d4b0;
+}
+
+.score-missed {
+  color: #f49a7f;
+}
+
+.score-rules {
+  display: grid;
+  gap: 6px;
+  direction: ltr;
+}
+
+.score-rules span {
+  display: flex;
+  min-width: 54px;
+  min-height: 27px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
 .summary-panel {
   display: grid;
   grid-template-columns: 1fr 86px;
@@ -543,6 +619,12 @@ main {
   text-align: right;
 }
 
+.cloud-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
 .google-actions {
   grid-template-columns: 1fr;
 }
@@ -574,12 +656,6 @@ main {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
-}
-
-.cloud-actions {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
 }
 
 .cloud-status {
@@ -822,6 +898,20 @@ select:focus {
     padding: 14px;
   }
 
+  .score-panel {
+    grid-template-columns: minmax(92px, 0.8fr) minmax(0, 1fr) auto;
+    gap: 9px;
+    padding-inline: 12px;
+  }
+
+  .score-total strong {
+    font-size: 29px;
+  }
+
+  .score-breakdown {
+    font-size: 11px;
+  }
+
   .progress-ring {
     width: 72px;
     height: 72px;
@@ -842,16 +932,3 @@ select:focus {
   }
 }
 
-.google-actions {
-  grid-template-columns: 1fr;
-}
-
-.google-actions.connected {
-  grid-template-columns: repeat(2, 1fr);
-}
-
-@media (max-width: 360px) {
-  .google-actions.connected {
-    grid-template-columns: 1fr;
-  }
-}
