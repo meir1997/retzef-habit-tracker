@@ -934,7 +934,7 @@ function getScoreSummary(untilDate = new Date()) {
     });
   });
 
-  return { done, missed, score: done - missed * 10 };
+  return { done, missed, score: done - missed * 5 };
 }
 
 function getRecordStatus(habit, key) {
