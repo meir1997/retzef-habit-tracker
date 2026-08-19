@@ -1083,6 +1083,10 @@ select:focus {
   display: none;
 }
 
+#bookInitialPageLabel[hidden] {
+  display: none;
+}
+
 @media (max-width: 360px) {
   .app-shell {
     padding-inline: 12px;
