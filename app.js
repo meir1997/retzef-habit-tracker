@@ -1,9 +1,11 @@
 const STORAGE_KEY = "retzef-habits-v1";
+const READING_STORAGE_KEY = "retzef-reading-v1";
 const CLOUD_TOKEN_KEY = "retzef-github-token-v1";
 const CLOUD_GIST_KEY = "retzef-github-gist-id-v1";
 const CLOUD_FILE_NAME = "retzef-habit-data.json";
 const LOCAL_UPDATED_KEY = "retzef-local-updated-at-v1";
 const GOAL_DAYS = [7, 30, 60, 100];
+const DAILY_READING_GOAL = 5;
 const dayLabels = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
 const colorOptions = ["#2f8f6f", "#4878c7", "#d86445", "#d7a528", "#7b62b3", "#2b8a9d", "#9a6a3a"];
 
@@ -53,9 +55,35 @@ const els = {
   statsHabitName: document.querySelector("#statsHabitName"),
   habitStatsGrid: document.querySelector("#habitStatsGrid"),
   goalList: document.querySelector("#goalList"),
+  openAddBook: document.querySelector("#openAddBook"),
+  readingScore: document.querySelector("#readingScore"),
+  readingTotalPages: document.querySelector("#readingTotalPages"),
+  readingElapsedDays: document.querySelector("#readingElapsedDays"),
+  dailyReadingSummary: document.querySelector("#dailyReadingSummary"),
+  dailyReadingValue: document.querySelector("#dailyReadingValue"),
+  dailyReadingBar: document.querySelector("#dailyReadingBar"),
+  bookList: document.querySelector("#bookList"),
+  bookDialog: document.querySelector("#bookDialog"),
+  bookForm: document.querySelector("#bookForm"),
+  bookDialogMode: document.querySelector("#bookDialogMode"),
+  closeBookDialog: document.querySelector("#closeBookDialog"),
+  bookId: document.querySelector("#bookId"),
+  bookTitle: document.querySelector("#bookTitle"),
+  bookAuthor: document.querySelector("#bookAuthor"),
+  bookTotalPages: document.querySelector("#bookTotalPages"),
+  bookInitialPageLabel: document.querySelector("#bookInitialPageLabel"),
+  bookInitialPage: document.querySelector("#bookInitialPage"),
+  deleteBook: document.querySelector("#deleteBook"),
+  pageDialog: document.querySelector("#pageDialog"),
+  pageForm: document.querySelector("#pageForm"),
+  closePageDialog: document.querySelector("#closePageDialog"),
+  pageBookTitle: document.querySelector("#pageBookTitle"),
+  pageBookId: document.querySelector("#pageBookId"),
+  bookCurrentPage: document.querySelector("#bookCurrentPage"),
 };
 
 let habits = loadHabits();
+let readingData = loadReadingData();
 let selectedDate = startOfDay(new Date());
 let selectedDays = [0, 1, 2, 3, 4, 5, 6];
 let selectedColor = colorOptions[0];
@@ -65,12 +93,14 @@ let googleTimer = null;
 let googleBusy = false;
 let googleUser = null;
 let googleCloudReady = false;
+let dayRefreshTimer = null;
 
 function start() {
   buildPickers();
   bindEvents();
   render();
   initializeGoogleCloud();
+  scheduleNextDayRefresh();
   registerServiceWorker();
 }
 
@@ -122,6 +152,45 @@ function saveHabits() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(habits));
 }
 
+function loadReadingData() {
+  const saved = localStorage.getItem(READING_STORAGE_KEY);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed?.books)) {
+        return {
+          startedAt: parsed.startedAt ?? null,
+          books: parsed.books.map(normalizeBook),
+        };
+      }
+    } catch {
+      localStorage.removeItem(READING_STORAGE_KEY);
+    }
+  }
+  return { startedAt: null, books: [] };
+}
+
+function normalizeBook(book) {
+  const startPage = Math.max(0, Math.round(Number(book.startPage) || 0));
+  const savedCurrentPage = Number(book.currentPage);
+  const currentPage = Math.max(0, Math.round(Number.isFinite(savedCurrentPage) ? savedCurrentPage : startPage));
+  const totalPages = Number(book.totalPages) > 0 ? Math.round(Number(book.totalPages)) : null;
+  return {
+    id: book.id || crypto.randomUUID(),
+    title: String(book.title || "ספר ללא שם"),
+    author: String(book.author || ""),
+    totalPages,
+    startPage,
+    currentPage: totalPages ? Math.min(currentPage, totalPages) : currentPage,
+    pageLog: book.pageLog && typeof book.pageLog === "object" ? book.pageLog : {},
+    createdAt: book.createdAt || new Date().toISOString(),
+  };
+}
+
+function saveReadingData() {
+  localStorage.setItem(READING_STORAGE_KEY, JSON.stringify(readingData));
+}
+
 function bindEvents() {
   document.querySelector("#openAdd").addEventListener("click", () => openHabitDialog());
   document.querySelector("#openAddSecondary").addEventListener("click", () => openHabitDialog());
@@ -143,6 +212,12 @@ function bindEvents() {
   els.saveGithubToken.addEventListener("click", handleSaveGithubToken);
   els.uploadCloud.addEventListener("click", () => uploadCloudData({ manual: true }));
   els.downloadCloud.addEventListener("click", downloadCloudData);
+  els.openAddBook.addEventListener("click", () => openBookDialog());
+  els.closeBookDialog.addEventListener("click", () => els.bookDialog.close());
+  els.bookForm.addEventListener("submit", handleBookSave);
+  els.deleteBook.addEventListener("click", handleBookDelete);
+  els.closePageDialog.addEventListener("click", () => els.pageDialog.close());
+  els.pageForm.addEventListener("submit", handlePageUpdate);
 }
 
 function buildPickers() {
@@ -211,9 +286,11 @@ function render() {
   renderScore(today);
   renderHabitList(els.todayHabits, dueSelected, { todayOnly: true, date: selected });
   renderHabitList(els.allHabits, habits, { todayOnly: false, date: today });
+  renderReading(today);
   renderInsights(today);
   renderCloudPanel();
   saveHabits();
+  saveReadingData();
 }
 
 function renderScore(today) {
@@ -223,209 +300,183 @@ function renderScore(today) {
   els.scoreMissed.textContent = summary.missed.toLocaleString("he-IL");
 }
 
-function renderDateStrip(selected, today, firstAvailableDate) {
-  els.weekStrip.innerHTML = "";
+function renderReading(today) {
+  const stats = getReadingStats(today);
+  els.readingScore.textContent = stats.score.toLocaleString("he-IL");
+  els.readingTotalPages.textContent = stats.totalPages.toLocaleString("he-IL");
+  els.readingElapsedDays.textContent = stats.elapsedDays.toLocaleString("he-IL");
+  els.dailyReadingValue.textContent = `${stats.todayPages}/${DAILY_READING_GOAL}`;
+  els.dailyReadingSummary.textContent = stats.todayPages >= DAILY_READING_GOAL
+    ? `${stats.todayPages} עמודים היום · היעד הושג`
+    : `${stats.todayPages} מתוך ${DAILY_READING_GOAL} עמודים`;
+  els.dailyReadingBar.style.width = `${Math.min(100, (stats.todayPages / DAILY_READING_GOAL) * 100)}%`;
 
-  for (let day = startOfDay(firstAvailableDate); day <= startOfDay(today); day = addDays(day, 1)) {
-    const key = dateKey(day);
-    const due = habits.filter((habit) => isHabitDue(habit, day));
-    const done = due.filter((habit) => getRecordStatus(habit, key) === "done");
-    const pill = document.createElement("button");
-    pill.className = "day-pill";
-    pill.type = "button";
-    pill.classList.toggle("selected", key === dateKey(selected));
-    pill.classList.toggle("today", key === dateKey(today));
-    pill.classList.toggle("done", due.length > 0 && done.length === due.length);
-    pill.setAttribute("aria-label", `בחירת ${formatFullDate(day)}`);
-    pill.innerHTML = `<span>${dayLabels[day.getDay()]}</span><strong>${day.getDate()}</strong>`;
-    pill.addEventListener("click", () => setSelectedDate(day));
-    els.weekStrip.appendChild(pill);
-  }
-
-  window.requestAnimationFrame(() => {
-    els.weekStrip.querySelector(".day-pill.selected")?.scrollIntoView({
-      inline: "center",
-      block: "nearest",
-      behavior: "smooth",
-    });
-  });
-}
-
-function renderHabitList(container, items, options) {
-  container.innerHTML = "";
-
-  if (!items.length) {
-    container.innerHTML = `<div class="empty-state">אין כאן הרגלים עדיין. אפשר להוסיף הרגל קטן וברור בלחיצה על +.</div>`;
+  els.bookList.innerHTML = "";
+  if (!readingData.books.length) {
+    els.bookList.innerHTML = `<div class="empty-state">עדיין אין ספרים במעקב. הוסף ספר כדי להתחיל לצבור נקודות קריאה.</div>`;
     return;
   }
 
-  items.forEach((habit) => {
-    const listDate = startOfDay(options.date ?? new Date());
-    const key = dateKey(listDate);
-    const canMark = isHabitDue(habit, listDate) && !isFutureDate(listDate);
-    const status = getRecordStatus(habit, key);
-    const done = status === "done";
-    const missed = status === "missed";
+  readingData.books.forEach((book) => {
+    const pagesRead = Math.max(0, book.currentPage - book.startPage);
+    const completed = Boolean(book.totalPages && book.currentPage >= book.totalPages);
+    const progress = book.totalPages ? Math.min(100, Math.round((book.currentPage / book.totalPages) * 100)) : null;
     const card = document.createElement("article");
-    card.className = "habit-card";
-    card.style.setProperty("--habit-color", habit.color);
-
-    const daysText = habit.days.length === 7 ? "כל יום" : habit.days.map((day) => dayLabels[day]).join(", ");
-    const note = habit.note ? ` · ${escapeText(habit.note)}` : "";
-    const doneLabel = canMark ? (done ? "ביטול סימון בוצע" : "סימון כבוצע") : "ההרגל לא מתוכנן ליום הזה";
-    const missedLabel = canMark ? (missed ? "ביטול סימון X" : "סימון X") : "ההרגל לא מתוכנן ליום הזה";
-    const stats = getHabitStats(habit);
-
+    card.className = `book-card${completed ? " completed" : ""}`;
     card.innerHTML = `
-      <div class="habit-actions">
-        <button class="habit-mark ${done ? "done" : ""}" type="button" data-action="done" aria-label="${doneLabel}" ${canMark ? "" : "disabled"}>
-          <span aria-hidden="true">✓</span>
-        </button>
-        <button class="habit-mark miss ${missed ? "missed" : ""}" type="button" data-action="missed" aria-label="${missedLabel}" ${canMark ? "" : "disabled"}>
-          <span aria-hidden="true">×</span>
-        </button>
+      <div class="book-heading">
+        <div>
+          <h3>${escapeText(book.title)}</h3>
+          <p>${book.author ? escapeText(book.author) : "ספר נוכחי"}</p>
+        </div>
+        <span class="book-status">${completed ? "הושלם" : `${pagesRead} נקודות`}</span>
       </div>
-      <div class="habit-title">
-        <h3>${escapeText(habit.name)}</h3>
-        <p>${habit.time} · ${daysText}${note}</p>
+      <div class="book-page-line">
+        <strong>עמוד ${book.currentPage.toLocaleString("he-IL")}${book.totalPages ? ` מתוך ${book.totalPages.toLocaleString("he-IL")}` : ""}</strong>
+        ${progress === null ? "" : `<span>${progress}%</span>`}
       </div>
-      <div class="habit-meta">
-        <span class="streak">${stats.currentStreak} ימים</span>
-        <button class="text-link" type="button">עריכה</button>
-        <button class="text-link" type="button" data-action="stats">סטטיסטיקה</button>
+      ${progress === null ? "" : `<div class="book-progress" aria-label="${progress}% מהספר"><span style="width:${progress}%"></span></div>`}
+      <div class="book-controls">
+        <div class="page-stepper" aria-label="עדכון עמוד בצעד אחד">
+          <button type="button" data-action="decrease" aria-label="הפחתת עמוד" ${book.currentPage <= 0 ? "disabled" : ""}>−</button>
+          <output dir="ltr">${book.currentPage.toLocaleString("he-IL")}</output>
+          <button type="button" data-action="increase" aria-label="הוספת עמוד" ${completed ? "disabled" : ""}>+</button>
+        </div>
+        <div class="book-actions">
+          <button class="text-link" type="button" data-action="progress">עדכון עמוד</button>
+          <button class="text-link" type="button" data-action="edit">עריכה</button>
+        </div>
       </div>
     `;
 
-    card.querySelector('[data-action="done"]').addEventListener("click", () => setHabitStatus(habit.id, "done", listDate));
-    card.querySelector('[data-action="missed"]').addEventListener("click", () => setHabitStatus(habit.id, "missed", listDate));
-    card.querySelector(".text-link").addEventListener("click", () => openHabitDialog(habit.id));
-    card.querySelector('[data-action="stats"]').addEventListener("click", () => openStatsDialog(habit.id));
-
-    if (!options.todayOnly || isHabitDue(habit, listDate)) {
-      container.appendChild(card);
-    }
+    card.querySelector('[data-action="decrease"]').addEventListener("click", () => updateBookPage(book.id, book.currentPage - 1));
+    card.querySelector('[data-action="increase"]').addEventListener("click", () => updateBookPage(book.id, book.currentPage + 1));
+    card.querySelector('[data-action="progress"]').addEventListener("click", () => openPageDialog(book.id));
+    card.querySelector('[data-action="edit"]').addEventListener("click", () => openBookDialog(book.id));
+    els.bookList.appendChild(card);
   });
 }
 
-function renderInsights(today) {
-  const weekDates = Array.from({ length: 7 }, (_, index) => addDays(today, -index));
-  const dueInWeek = weekDates.flatMap((day) => habits.filter((habit) => isHabitDue(habit, day)).map((habit) => [habit, day]));
-  const doneInWeek = dueInWeek.filter(([habit, day]) => getRecordStatus(habit, dateKey(day)) === "done").length;
-  const weekPercent = dueInWeek.length ? Math.round((doneInWeek / dueInWeek.length) * 100) : 0;
-  const bestHabit = [...habits].sort((a, b) => getHabitStats(b).currentStreak - getHabitStats(a).currentStreak)[0];
-  const totalDone = habits.reduce((sum, habit) => sum + countRecords(habit, "done"), 0);
-  const activeDays = new Set(
-    habits.flatMap((habit) => Object.entries(habit.records).filter(([, record]) => isDoneRecord(record)).map(([key]) => key)),
-  ).size;
-
-  els.statsGrid.innerHTML = `
-    <div class="stat-card"><strong>${weekPercent}%</strong><span>השלמה בשבעת הימים האחרונים</span></div>
-    <div class="stat-card"><strong>${bestHabit ? getHabitStats(bestHabit).currentStreak : 0}</strong><span>הרצף הארוך הפעיל ביותר</span></div>
-    <div class="stat-card"><strong>${totalDone}</strong><span>סימונים שבוצעו בסך הכל</span></div>
-    <div class="stat-card"><strong>${activeDays}</strong><span>ימים עם התקדמות</span></div>
-  `;
-
-  renderMonth(today);
+function getReadingStats(today = new Date()) {
+  const totalPages = readingData.books.reduce(
+    (sum, book) => sum + Math.max(0, book.currentPage - book.startPage),
+    0,
+  );
+  const elapsedDays = readingData.startedAt
+    ? Math.max(0, calendarDayNumber(today) - calendarDayNumber(new Date(readingData.startedAt)))
+    : 0;
+  const todayKey = dateKey(today);
+  const todayPages = Math.max(
+    0,
+    readingData.books.reduce((sum, book) => sum + (Number(book.pageLog?.[todayKey]) || 0), 0),
+  );
+  return { totalPages, elapsedDays, todayPages, score: totalPages - elapsedDays * DAILY_READING_GOAL };
 }
 
-function renderMonth(today) {
-  const monthName = new Intl.DateTimeFormat("he-IL", { month: "long", year: "numeric" }).format(today);
-  els.monthTitle.textContent = monthName;
-  els.monthGrid.innerHTML = "";
-
-  const first = new Date(today.getFullYear(), today.getMonth(), 1);
-  const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-  for (let blank = 0; blank < first.getDay(); blank += 1) {
-    els.monthGrid.appendChild(document.createElement("span"));
-  }
-
-  for (let dayNumber = 1; dayNumber <= last.getDate(); dayNumber += 1) {
-    const day = new Date(today.getFullYear(), today.getMonth(), dayNumber);
-    const key = dateKey(day);
-    const hasProgress = habits.some((habit) => getRecordStatus(habit, key) === "done");
-    const cell = document.createElement("div");
-    cell.className = "calendar-day";
-    cell.classList.toggle("has-progress", hasProgress);
-    cell.classList.toggle("today", key === dateKey(today));
-    cell.textContent = dayNumber;
-    els.monthGrid.appendChild(cell);
-  }
+function openBookDialog(id = null) {
+  const book = readingData.books.find((item) => item.id === id);
+  els.bookForm.reset();
+  els.bookId.value = book?.id ?? "";
+  els.bookDialogMode.textContent = book ? "עריכת ספר" : "ספר חדש";
+  els.bookTitle.value = book?.title ?? "";
+  els.bookAuthor.value = book?.author ?? "";
+  els.bookTotalPages.value = book?.totalPages ?? "";
+  els.bookInitialPage.value = book?.startPage ?? 0;
+  els.bookInitialPageLabel.hidden = Boolean(book);
+  els.deleteBook.hidden = !book;
+  els.bookDialog.showModal();
+  els.bookTitle.focus();
 }
 
-function setHabitStatus(id, nextStatus, date = selectedDate) {
-  const habit = habits.find((item) => item.id === id);
-  if (!habit) return;
-  const targetDate = startOfDay(date);
-  if (!isHabitDue(habit, targetDate) || isFutureDate(targetDate)) return;
-  const key = dateKey(targetDate);
-  const currentStatus = getRecordStatus(habit, key);
-  if (currentStatus === nextStatus) {
-    delete habit.records[key];
+function handleBookSave(event) {
+  event.preventDefault();
+  const id = els.bookId.value || crypto.randomUUID();
+  const existing = readingData.books.find((book) => book.id === id);
+  const totalPagesValue = Math.max(0, Math.round(Number(els.bookTotalPages.value) || 0));
+  const totalPages = totalPagesValue || null;
+
+  if (existing) {
+    const previousPage = existing.currentPage;
+    existing.title = els.bookTitle.value.trim();
+    existing.author = els.bookAuthor.value.trim();
+    existing.totalPages = totalPages;
+    if (totalPages && existing.currentPage > totalPages) {
+      existing.currentPage = totalPages;
+      recordBookPageChange(existing, existing.currentPage - previousPage);
+    }
   } else {
-    habit.records[key] = nextStatus === "done" ? true : "missed";
+    const enteredPage = Math.max(0, Math.round(Number(els.bookInitialPage.value) || 0));
+    const initialPage = totalPages ? Math.min(enteredPage, totalPages) : enteredPage;
+    readingData.books.unshift({
+      id,
+      title: els.bookTitle.value.trim(),
+      author: els.bookAuthor.value.trim(),
+      totalPages,
+      startPage: initialPage,
+      currentPage: initialPage,
+      pageLog: {},
+      createdAt: new Date().toISOString(),
+    });
+    if (!readingData.startedAt) readingData.startedAt = new Date().toISOString();
   }
+
+  els.bookDialog.close();
+  commitReadingChange();
+}
+
+function handleBookDelete() {
+  const id = els.bookId.value;
+  const book = readingData.books.find((item) => item.id === id);
+  if (!book) return;
+  if (!window.confirm(`למחוק את “${book.title}” ואת נקודות הקריאה שלו?`)) return;
+  readingData.books = readingData.books.filter((item) => item.id !== id);
+  els.bookDialog.close();
+  commitReadingChange();
+}
+
+function openPageDialog(id) {
+  const book = readingData.books.find((item) => item.id === id);
+  if (!book) return;
+  els.pageBookId.value = book.id;
+  els.pageBookTitle.textContent = book.title;
+  els.bookCurrentPage.value = book.currentPage;
+  els.bookCurrentPage.max = book.totalPages ?? "";
+  els.pageDialog.showModal();
+  els.bookCurrentPage.focus();
+  els.bookCurrentPage.select();
+}
+
+function handlePageUpdate(event) {
+  event.preventDefault();
+  updateBookPage(els.pageBookId.value, Number(els.bookCurrentPage.value));
+  els.pageDialog.close();
+}
+
+function updateBookPage(id, nextPageValue) {
+  const book = readingData.books.find((item) => item.id === id);
+  if (!book) return;
+  let nextPage = Math.max(0, Math.round(Number(nextPageValue) || 0));
+  if (book.totalPages) nextPage = Math.min(nextPage, book.totalPages);
+  const difference = nextPage - book.currentPage;
+  if (!difference) return;
+  book.currentPage = nextPage;
+  recordBookPageChange(book, difference);
+  commitReadingChange();
+}
+
+function recordBookPageChange(book, difference) {
+  if (!difference) return;
+  const key = dateKey(new Date());
+  const nextValue = (Number(book.pageLog?.[key]) || 0) + difference;
+  book.pageLog = book.pageLog ?? {};
+  if (nextValue) book.pageLog[key] = nextValue;
+  else delete book.pageLog[key];
+}
+
+function commitReadingChange() {
   touchLocalData();
   render();
-  scheduleCloudUpload();
-}
-
-function setSelectedDate(date) {
-  selectedDate = clampDateToTrackerRange(date);
-  render();
-}
-
-function openStatsDialog(id) {
-  const habit = habits.find((item) => item.id === id);
-  if (!habit) return;
-  const stats = getHabitStats(habit);
-  els.statsHabitName.textContent = habit.name;
-  els.habitStatsGrid.innerHTML = `
-    <div class="stat-card"><strong>${stats.currentStreak}</strong><span>רצף נוכחי</span></div>
-    <div class="stat-card"><strong>${stats.bestStreak}</strong><span>רצף שיא</span></div>
-    <div class="stat-card"><strong>${stats.last30Percent}%</strong><span>הצלחה ב־30 ימים</span></div>
-    <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
-    <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
-    <div class="stat-card"><strong>${stats.activeDays}</strong><span>ימים פעילים</span></div>
-  `;
-  els.goalList.innerHTML = GOAL_DAYS.map((goal) => {
-    const progress = Math.min(stats.currentStreak, goal);
-    const percent = Math.round((progress / goal) * 100);
-    const reached = stats.currentStreak >= goal;
-    return `
-      <div class="goal-row ${reached ? "reached" : ""}">
-        <div>
-          <strong>${goal} ימים ברצף</strong>
-          <span>${reached ? "הושג" : `${progress} מתוך ${goal}`}</span>
-        </div>
-        <div class="goal-bar" aria-label="התקדמות ליעד ${goal} ימים">
-          <span style="width:${percent}%"></span>
-        </div>
-      </div>
-    `;
-  }).join("");
-  els.statsDialog.showModal();
-}
-
-function openHabitDialog(id = null) {
-  const habit = habits.find((item) => item.id === id);
-  els.form.reset();
-  els.habitId.value = habit?.id ?? "";
-  els.dialogMode.textContent = habit ? "עריכת הרגל" : "הרגל חדש";
-  els.deleteHabit.hidden = !habit;
-  selectedDays = habit ? [...habit.days] : [0, 1, 2, 3, 4, 5, 6];
-  selectedColor = habit?.color ?? colorOptions[0];
-  els.habitName.value = habit?.name ?? "";
-  els.habitTime.value = habit?.time ?? "בוקר";
-  els.habitNote.value = habit?.note ?? "";
-  syncPickers();
-  els.dialog.showModal();
-  els.habitName.focus();
-}
-
-function syncPickers() {
-  els.dayPicker.querySelectorAll("button").forEach((button) => {
-    button.classList.toggle("active", selectedDays.includes(Number(button.dataset.day)));
+  scheduleCloudU…2400 tokens truncated…cludes(Number(button.dataset.day)));
   });
 
   els.colorPicker.querySelectorAll("button").forEach((button) => {
@@ -586,17 +637,28 @@ function createCloudPayload() {
   localStorage.setItem(LOCAL_UPDATED_KEY, updatedAt);
   return {
     app: "retzef",
-    version: 2,
+    version: 3,
     updatedAt,
     habits,
+    reading: readingData,
   };
 }
 
 function applyCloudPayload(payload) {
   habits = payload.habits;
+  applyReadingPayload(payload.reading);
   localStorage.setItem(LOCAL_UPDATED_KEY, payload.updatedAt || new Date().toISOString());
   saveHabits();
+  saveReadingData();
   render();
+}
+
+function applyReadingPayload(reading) {
+  if (!Array.isArray(reading?.books)) return;
+  readingData = {
+    startedAt: reading.startedAt ?? null,
+    books: reading.books.map(normalizeBook),
+  };
 }
 
 function touchLocalData() {
@@ -729,9 +791,10 @@ async function uploadCloudData({ manual }) {
   try {
     const payload = {
       app: "retzef",
-      version: 1,
+      version: 2,
       updatedAt: new Date().toISOString(),
       habits,
+      reading: readingData,
     };
     const content = JSON.stringify(payload, null, 2);
     let gistId = localStorage.getItem(CLOUD_GIST_KEY);
@@ -787,7 +850,9 @@ async function downloadCloudData() {
     if (!Array.isArray(payload.habits)) throw new Error("קובץ הענן לא תקין.");
 
     habits = payload.habits;
+    applyReadingPayload(payload.reading);
     saveHabits();
+    saveReadingData();
     render();
     setCloudStatus("הנתונים נטענו מהענן.", "ok");
   } catch (error) {
@@ -999,6 +1064,10 @@ function dateKey(date) {
 function parseDateKey(key) {
   const [year, month, day] = key.split("-").map(Number);
   return new Date(year, month - 1, day);
+}
+
+function calendarDayNumber(date) {
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
 }
 
 function formatFullDate(date) {
