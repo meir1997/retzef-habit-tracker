@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icon-180.png" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=6" />
+    <link rel="stylesheet" href="styles.css?v=7" />
   </head>
   <body>
     <div class="app-shell">
@@ -72,6 +72,44 @@
           <div class="habit-list" id="allHabits"></div>
         </section>
 
+        <section class="view" id="view-reading" aria-labelledby="readingTitle">
+          <div class="section-heading">
+            <div>
+              <h2 id="readingTitle">הקריאה שלי</h2>
+              <p>ספרים נוכחיים והתקדמות לפי עמודים.</p>
+            </div>
+            <button class="text-button" id="openAddBook" type="button">ספר חדש</button>
+          </div>
+
+          <section class="reading-score-panel" aria-labelledby="readingScoreTitle">
+            <div class="reading-score-total">
+              <span id="readingScoreTitle">ניקוד קריאה</span>
+              <strong id="readingScore" dir="ltr" aria-live="polite">0</strong>
+            </div>
+            <div class="reading-score-details">
+              <span><b id="readingTotalPages">0</b> עמודים</span>
+              <span><b id="readingElapsedDays">0</b> ימים שעברו</span>
+            </div>
+            <div class="score-rules reading-rules" aria-label="כללי ניקוד הקריאה">
+              <span>עמוד <b dir="ltr">+1</b></span>
+              <span>יום <b dir="ltr">-5</b></span>
+            </div>
+          </section>
+
+          <section class="daily-reading-panel" aria-labelledby="dailyReadingTitle">
+            <div>
+              <h3 id="dailyReadingTitle">היעד של היום</h3>
+              <p id="dailyReadingSummary">0 מתוך 5 עמודים</p>
+            </div>
+            <strong id="dailyReadingValue" dir="ltr">0/5</strong>
+            <div class="reading-progress" aria-label="התקדמות ליעד הקריאה היומי">
+              <span id="dailyReadingBar"></span>
+            </div>
+          </section>
+
+          <div class="book-list" id="bookList"></div>
+        </section>
+
         <section class="view" id="view-insights" aria-labelledby="insightsTitle">
           <div class="section-heading">
             <div>
@@ -83,7 +121,7 @@
           <div class="cloud-panel">
             <div class="calendar-head">
               <h3>סנכרון עם Google</h3>
-              <p>ההרגלים וההתקדמות נשמרים בחשבון שלך ומתעדכנים בכל המכשירים.</p>
+              <p>ההרגלים, הספרים וההתקדמות נשמרים בחשבון שלך ומתעדכנים בכל המכשירים.</p>
             </div>
             <div class="google-account" id="googleAccount" hidden>
               <img id="googleAvatar" alt="" referrerpolicy="no-referrer" />
@@ -136,6 +174,10 @@
         <button class="tab" type="button" data-view="habits">
           <span aria-hidden="true">◧</span>
           <span>הרגלים</span>
+        </button>
+        <button class="tab" type="button" data-view="reading">
+          <span aria-hidden="true">▤</span>
+          <span>קריאה</span>
         </button>
         <button class="tab" type="button" data-view="insights">
           <span aria-hidden="true">◌</span>
@@ -207,9 +249,67 @@
       </div>
     </dialog>
 
+    <dialog class="habit-dialog" id="bookDialog">
+      <form method="dialog" class="habit-form" id="bookForm">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow" id="bookDialogMode">ספר חדש</p>
+            <h2>פרטי הספר</h2>
+          </div>
+          <button class="icon-button subtle" id="closeBookDialog" type="button" aria-label="סגירה">×</button>
+        </div>
+
+        <input type="hidden" id="bookId" />
+
+        <label>
+          שם הספר
+          <input id="bookTitle" maxlength="60" placeholder="שם הספר" required />
+        </label>
+
+        <label>
+          מחבר או מחברת
+          <input id="bookAuthor" maxlength="50" placeholder="לא חובה" />
+        </label>
+
+        <label>
+          מספר עמודים בספר
+          <input id="bookTotalPages" inputmode="numeric" min="1" placeholder="לא חובה" type="number" />
+        </label>
+
+        <label id="bookInitialPageLabel">
+          העמוד שבו אתה נמצא עכשיו
+          <input id="bookInitialPage" inputmode="numeric" min="0" value="0" type="number" />
+        </label>
+
+        <div class="dialog-actions">
+          <button class="primary-button" type="submit">שמירה</button>
+          <button class="ghost-button" id="deleteBook" type="button">מחיקה</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="habit-dialog" id="pageDialog">
+      <form method="dialog" class="habit-form" id="pageForm">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">עדכון התקדמות</p>
+            <h2 id="pageBookTitle">ספר</h2>
+          </div>
+          <button class="icon-button subtle" id="closePageDialog" type="button" aria-label="סגירה">×</button>
+        </div>
+
+        <input type="hidden" id="pageBookId" />
+        <label>
+          עד איזה עמוד הגעת?
+          <input id="bookCurrentPage" inputmode="numeric" min="0" type="number" required />
+        </label>
+        <button class="primary-button" type="submit">עדכון</button>
+      </form>
+    </dialog>
+
     <script src="firebase-config.js?v=1"></script>
     <script type="module" src="firebase-sync.js?v=2"></script>
-    <script src="app.js?v=13"></script>
+    <script src="app.js?v=14"></script>
   </body>
 </html>
 
