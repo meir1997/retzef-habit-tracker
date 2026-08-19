@@ -1,8 +1,8 @@
-const CACHE_NAME = "retzef-v19";
+const CACHE_NAME = "retzef-v20";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=7",
+  "./styles.css?v=8",
   "./firebase-config.js?v=1",
   "./firebase-sync.js?v=2",
   "./app.js?v=16",
