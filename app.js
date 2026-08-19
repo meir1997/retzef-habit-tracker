@@ -476,7 +476,222 @@ function recordBookPageChange(book, difference) {
 function commitReadingChange() {
   touchLocalData();
   render();
-  scheduleCloudU…2400 tokens truncated…cludes(Number(button.dataset.day)));
+  scheduleCloudUpload();
+}
+
+function scheduleNextDayRefresh() {
+  window.clearTimeout(dayRefreshTimer);
+  const now = new Date();
+  const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+  dayRefreshTimer = window.setTimeout(() => {
+    render();
+    scheduleNextDayRefresh();
+  }, nextDay.getTime() - now.getTime());
+}
+
+function renderDateStrip(selected, today, firstAvailableDate) {
+  els.weekStrip.innerHTML = "";
+
+  for (let day = startOfDay(firstAvailableDate); day <= startOfDay(today); day = addDays(day, 1)) {
+    const key = dateKey(day);
+    const due = habits.filter((habit) => isHabitDue(habit, day));
+    const done = due.filter((habit) => getRecordStatus(habit, key) === "done");
+    const pill = document.createElement("button");
+    pill.className = "day-pill";
+    pill.type = "button";
+    pill.classList.toggle("selected", key === dateKey(selected));
+    pill.classList.toggle("today", key === dateKey(today));
+    pill.classList.toggle("done", due.length > 0 && done.length === due.length);
+    pill.setAttribute("aria-label", `בחירת ${formatFullDate(day)}`);
+    pill.innerHTML = `<span>${dayLabels[day.getDay()]}</span><strong>${day.getDate()}</strong>`;
+    pill.addEventListener("click", () => setSelectedDate(day));
+    els.weekStrip.appendChild(pill);
+  }
+
+  window.requestAnimationFrame(() => {
+    els.weekStrip.querySelector(".day-pill.selected")?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: "smooth",
+    });
+  });
+}
+
+function renderHabitList(container, items, options) {
+  container.innerHTML = "";
+
+  if (!items.length) {
+    container.innerHTML = `<div class="empty-state">אין כאן הרגלים עדיין. אפשר להוסיף הרגל קטן וברור בלחיצה על +.</div>`;
+    return;
+  }
+
+  items.forEach((habit) => {
+    const listDate = startOfDay(options.date ?? new Date());
+    const key = dateKey(listDate);
+    const canMark = isHabitDue(habit, listDate) && !isFutureDate(listDate);
+    const status = getRecordStatus(habit, key);
+    const done = status === "done";
+    const missed = status === "missed";
+    const card = document.createElement("article");
+    card.className = "habit-card";
+    card.style.setProperty("--habit-color", habit.color);
+
+    const daysText = habit.days.length === 7 ? "כל יום" : habit.days.map((day) => dayLabels[day]).join(", ");
+    const note = habit.note ? ` · ${escapeText(habit.note)}` : "";
+    const doneLabel = canMark ? (done ? "ביטול סימון בוצע" : "סימון כבוצע") : "ההרגל לא מתוכנן ליום הזה";
+    const missedLabel = canMark ? (missed ? "ביטול סימון X" : "סימון X") : "ההרגל לא מתוכנן ליום הזה";
+    const stats = getHabitStats(habit);
+
+    card.innerHTML = `
+      <div class="habit-actions">
+        <button class="habit-mark ${done ? "done" : ""}" type="button" data-action="done" aria-label="${doneLabel}" ${canMark ? "" : "disabled"}>
+          <span aria-hidden="true">✓</span>
+        </button>
+        <button class="habit-mark miss ${missed ? "missed" : ""}" type="button" data-action="missed" aria-label="${missedLabel}" ${canMark ? "" : "disabled"}>
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
+      <div class="habit-title">
+        <h3>${escapeText(habit.name)}</h3>
+        <p>${habit.time} · ${daysText}${note}</p>
+      </div>
+      <div class="habit-meta">
+        <span class="streak">${stats.currentStreak} ימים</span>
+        <button class="text-link" type="button">עריכה</button>
+        <button class="text-link" type="button" data-action="stats">סטטיסטיקה</button>
+      </div>
+    `;
+
+    card.querySelector('[data-action="done"]').addEventListener("click", () => setHabitStatus(habit.id, "done", listDate));
+    card.querySelector('[data-action="missed"]').addEventListener("click", () => setHabitStatus(habit.id, "missed", listDate));
+    card.querySelector(".text-link").addEventListener("click", () => openHabitDialog(habit.id));
+    card.querySelector('[data-action="stats"]').addEventListener("click", () => openStatsDialog(habit.id));
+
+    if (!options.todayOnly || isHabitDue(habit, listDate)) {
+      container.appendChild(card);
+    }
+  });
+}
+
+function renderInsights(today) {
+  const weekDates = Array.from({ length: 7 }, (_, index) => addDays(today, -index));
+  const dueInWeek = weekDates.flatMap((day) => habits.filter((habit) => isHabitDue(habit, day)).map((habit) => [habit, day]));
+  const doneInWeek = dueInWeek.filter(([habit, day]) => getRecordStatus(habit, dateKey(day)) === "done").length;
+  const weekPercent = dueInWeek.length ? Math.round((doneInWeek / dueInWeek.length) * 100) : 0;
+  const bestHabit = [...habits].sort((a, b) => getHabitStats(b).currentStreak - getHabitStats(a).currentStreak)[0];
+  const totalDone = habits.reduce((sum, habit) => sum + countRecords(habit, "done"), 0);
+  const activeDays = new Set(
+    habits.flatMap((habit) => Object.entries(habit.records).filter(([, record]) => isDoneRecord(record)).map(([key]) => key)),
+  ).size;
+
+  els.statsGrid.innerHTML = `
+    <div class="stat-card"><strong>${weekPercent}%</strong><span>השלמה בשבעת הימים האחרונים</span></div>
+    <div class="stat-card"><strong>${bestHabit ? getHabitStats(bestHabit).currentStreak : 0}</strong><span>הרצף הארוך הפעיל ביותר</span></div>
+    <div class="stat-card"><strong>${totalDone}</strong><span>סימונים שבוצעו בסך הכל</span></div>
+    <div class="stat-card"><strong>${activeDays}</strong><span>ימים עם התקדמות</span></div>
+  `;
+
+  renderMonth(today);
+}
+
+function renderMonth(today) {
+  const monthName = new Intl.DateTimeFormat("he-IL", { month: "long", year: "numeric" }).format(today);
+  els.monthTitle.textContent = monthName;
+  els.monthGrid.innerHTML = "";
+
+  const first = new Date(today.getFullYear(), today.getMonth(), 1);
+  const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+  for (let blank = 0; blank < first.getDay(); blank += 1) {
+    els.monthGrid.appendChild(document.createElement("span"));
+  }
+
+  for (let dayNumber = 1; dayNumber <= last.getDate(); dayNumber += 1) {
+    const day = new Date(today.getFullYear(), today.getMonth(), dayNumber);
+    const key = dateKey(day);
+    const hasProgress = habits.some((habit) => getRecordStatus(habit, key) === "done");
+    const cell = document.createElement("div");
+    cell.className = "calendar-day";
+    cell.classList.toggle("has-progress", hasProgress);
+    cell.classList.toggle("today", key === dateKey(today));
+    cell.textContent = dayNumber;
+    els.monthGrid.appendChild(cell);
+  }
+}
+
+function setHabitStatus(id, nextStatus, date = selectedDate) {
+  const habit = habits.find((item) => item.id === id);
+  if (!habit) return;
+  const targetDate = startOfDay(date);
+  if (!isHabitDue(habit, targetDate) || isFutureDate(targetDate)) return;
+  const key = dateKey(targetDate);
+  const currentStatus = getRecordStatus(habit, key);
+  if (currentStatus === nextStatus) {
+    delete habit.records[key];
+  } else {
+    habit.records[key] = nextStatus === "done" ? true : "missed";
+  }
+  touchLocalData();
+  render();
+  scheduleCloudUpload();
+}
+
+function setSelectedDate(date) {
+  selectedDate = clampDateToTrackerRange(date);
+  render();
+}
+
+function openStatsDialog(id) {
+  const habit = habits.find((item) => item.id === id);
+  if (!habit) return;
+  const stats = getHabitStats(habit);
+  els.statsHabitName.textContent = habit.name;
+  els.habitStatsGrid.innerHTML = `
+    <div class="stat-card"><strong>${stats.currentStreak}</strong><span>רצף נוכחי</span></div>
+    <div class="stat-card"><strong>${stats.bestStreak}</strong><span>רצף שיא</span></div>
+    <div class="stat-card"><strong>${stats.last30Percent}%</strong><span>הצלחה ב־30 ימים</span></div>
+    <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
+    <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
+    <div class="stat-card"><strong>${stats.activeDays}</strong><span>ימים פעילים</span></div>
+  `;
+  els.goalList.innerHTML = GOAL_DAYS.map((goal) => {
+    const progress = Math.min(stats.currentStreak, goal);
+    const percent = Math.round((progress / goal) * 100);
+    const reached = stats.currentStreak >= goal;
+    return `
+      <div class="goal-row ${reached ? "reached" : ""}">
+        <div>
+          <strong>${goal} ימים ברצף</strong>
+          <span>${reached ? "הושג" : `${progress} מתוך ${goal}`}</span>
+        </div>
+        <div class="goal-bar" aria-label="התקדמות ליעד ${goal} ימים">
+          <span style="width:${percent}%"></span>
+        </div>
+      </div>
+    `;
+  }).join("");
+  els.statsDialog.showModal();
+}
+
+function openHabitDialog(id = null) {
+  const habit = habits.find((item) => item.id === id);
+  els.form.reset();
+  els.habitId.value = habit?.id ?? "";
+  els.dialogMode.textContent = habit ? "עריכת הרגל" : "הרגל חדש";
+  els.deleteHabit.hidden = !habit;
+  selectedDays = habit ? [...habit.days] : [0, 1, 2, 3, 4, 5, 6];
+  selectedColor = habit?.color ?? colorOptions[0];
+  els.habitName.value = habit?.name ?? "";
+  els.habitTime.value = habit?.time ?? "בוקר";
+  els.habitNote.value = habit?.note ?? "";
+  syncPickers();
+  els.dialog.showModal();
+  els.habitName.focus();
+}
+
+function syncPickers() {
+  els.dayPicker.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("active", selectedDays.includes(Number(button.dataset.day)));
   });
 
   els.colorPicker.querySelectorAll("button").forEach((button) => {
@@ -1093,4 +1308,3 @@ function registerServiceWorker() {
 }
 
 start();
-
