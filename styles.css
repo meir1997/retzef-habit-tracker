@@ -465,6 +465,201 @@ main {
   margin-bottom: 14px;
 }
 
+.reading-score-panel {
+  display: grid;
+  grid-template-columns: minmax(112px, 0.9fr) minmax(0, 1.2fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 15px 16px;
+  border-radius: var(--radius);
+  background: #263c3b;
+  color: white;
+  box-shadow: var(--shadow);
+}
+
+.reading-score-total {
+  display: grid;
+  gap: 2px;
+}
+
+.reading-score-total span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reading-score-total strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 34px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reading-score-details {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #bcded1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.reading-rules span {
+  min-width: 66px;
+}
+
+.daily-reading-panel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 14px;
+  align-items: center;
+  margin: 12px 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.daily-reading-panel p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.daily-reading-panel > strong {
+  color: var(--blue);
+  font-size: 23px;
+}
+
+.reading-progress,
+.book-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9e3d7;
+}
+
+.reading-progress {
+  grid-column: 1 / -1;
+}
+
+.reading-progress span,
+.book-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue);
+  transition: width 180ms ease;
+}
+
+.book-list {
+  display: grid;
+  gap: 10px;
+}
+
+.book-card {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-inline-start: 4px solid var(--blue);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.book-card.completed {
+  border-inline-start-color: var(--green);
+}
+
+.book-heading,
+.book-page-line,
+.book-controls,
+.book-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.book-heading > div {
+  min-width: 0;
+}
+
+.book-heading h3 {
+  overflow-wrap: anywhere;
+}
+
+.book-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.book-status {
+  flex: 0 0 auto;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.book-card.completed .book-status {
+  color: var(--green);
+}
+
+.book-page-line {
+  font-size: 13px;
+}
+
+.book-page-line span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.book-progress span {
+  background: var(--green);
+}
+
+.page-stepper {
+  display: grid;
+  grid-template-columns: 36px minmax(54px, auto) 36px;
+  direction: ltr;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f5f0e5;
+}
+
+.page-stepper button {
+  width: 36px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.page-stepper button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.page-stepper output {
+  display: grid;
+  min-height: 34px;
+  place-items: center;
+  padding-inline: 6px;
+  border-inline: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .text-button {
   min-width: 72px;
   height: 38px;
@@ -711,7 +906,7 @@ main {
   bottom: 0;
   display: grid;
   width: min(100%, 480px);
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   padding: 10px 14px calc(env(safe-area-inset-bottom) + 10px);
   border-top: 1px solid rgba(226, 220, 204, 0.92);
@@ -910,6 +1105,34 @@ select:focus {
 
   .score-breakdown {
     font-size: 11px;
+  }
+
+  .reading-score-panel {
+    grid-template-columns: minmax(88px, 0.8fr) minmax(0, 1fr) auto;
+    gap: 9px;
+    padding-inline: 12px;
+  }
+
+  .reading-score-total strong {
+    font-size: 29px;
+  }
+
+  .reading-score-details {
+    font-size: 11px;
+  }
+
+  .reading-rules span {
+    min-width: 58px;
+  }
+
+  .book-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .page-stepper {
+    width: 100%;
+    grid-template-columns: 40px 1fr 40px;
   }
 
   .progress-ring {
