@@ -47,6 +47,8 @@ const els = {
   habitName: document.querySelector("#habitName"),
   habitTime: document.querySelector("#habitTime"),
   habitNote: document.querySelector("#habitNote"),
+  habitTrackingModes: document.querySelectorAll('input[name="trackingMode"]'),
+  habitCountsTowardScore: document.querySelector("#habitCountsTowardScore"),
   dayPicker: document.querySelector("#dayPicker"),
   colorPicker: document.querySelector("#colorPicker"),
   deleteHabit: document.querySelector("#deleteHabit"),
@@ -108,7 +110,14 @@ function loadHabits() {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     try {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        const normalized = normalizeHabits(parsed);
+        if (JSON.stringify(normalized) !== JSON.stringify(parsed)) {
+          localStorage.setItem(LOCAL_UPDATED_KEY, new Date().toISOString());
+        }
+        return normalized;
+      }
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -122,6 +131,8 @@ function loadHabits() {
       note: "כוס אחת לפני הקפה",
       days: [0, 1, 2, 3, 4, 5, 6],
       color: "#2f8f6f",
+      trackingMode: "streak",
+      countsTowardScore: true,
       records: {},
       createdAt: new Date().toISOString(),
     },
@@ -132,6 +143,8 @@ function loadHabits() {
       note: "גם 10 דקות נחשבות",
       days: [0, 1, 2, 3, 4],
       color: "#4878c7",
+      trackingMode: "streak",
+      countsTowardScore: true,
       records: {},
       createdAt: new Date().toISOString(),
     },
@@ -142,10 +155,51 @@ function loadHabits() {
       note: "עמוד אחד לפחות",
       days: [0, 1, 2, 3, 4, 5, 6],
       color: "#d86445",
+      trackingMode: "streak",
+      countsTowardScore: true,
       records: {},
       createdAt: new Date().toISOString(),
     },
   ];
+}
+
+function normalizeHabits(items) {
+  return items.map(normalizeHabit);
+}
+
+function normalizeHabit(habit) {
+  const percentageDefault = isPercentageMigrationHabit(habit?.name);
+  const normalizedDays = Array.isArray(habit?.days)
+    ? [...new Set(habit.days.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((a, b) => a - b)
+    : [];
+  const trackingMode = habit?.trackingMode === "percentage" || habit?.trackingMode === "streak"
+    ? habit.trackingMode
+    : percentageDefault ? "percentage" : "streak";
+  const countsTowardScore = typeof habit?.countsTowardScore === "boolean"
+    ? habit.countsTowardScore
+    : !percentageDefault;
+
+  return {
+    ...habit,
+    id: habit?.id || crypto.randomUUID(),
+    name: String(habit?.name || "הרגל ללא שם"),
+    time: String(habit?.time || "גמיש"),
+    note: String(habit?.note || ""),
+    days: normalizedDays.length ? normalizedDays : [0, 1, 2, 3, 4, 5, 6],
+    color: habit?.color || colorOptions[0],
+    trackingMode,
+    countsTowardScore,
+    records: habit?.records && typeof habit.records === "object" ? habit.records : {},
+    createdAt: habit?.createdAt || new Date().toISOString(),
+  };
+}
+
+function isPercentageMigrationHabit(name) {
+  const words = String(name || "")
+    .trim()
+    .split(/[^\u0590-\u05ff]+/)
+    .filter(Boolean);
+  return words.includes("טלפון") || words.includes("חצי");
 }
 
 function saveHabits() {
@@ -556,7 +610,7 @@ function renderHabitList(container, items, options) {
         <p>${habit.time} · ${daysText}${note}</p>
       </div>
       <div class="habit-meta">
-        <span class="streak">${stats.currentStreak} ימים</span>
+        <span class="streak">${habit.trackingMode === "percentage" ? `${stats.successPercent}% הצלחה` : `${stats.currentStreak} ימים`}</span>
         <button class="text-link" type="button">עריכה</button>
         <button class="text-link" type="button" data-action="stats">סטטיסטיקה</button>
       </div>
@@ -578,7 +632,8 @@ function renderInsights(today) {
   const dueInWeek = weekDates.flatMap((day) => habits.filter((habit) => isHabitDue(habit, day)).map((habit) => [habit, day]));
   const doneInWeek = dueInWeek.filter(([habit, day]) => getRecordStatus(habit, dateKey(day)) === "done").length;
   const weekPercent = dueInWeek.length ? Math.round((doneInWeek / dueInWeek.length) * 100) : 0;
-  const bestHabit = [...habits].sort((a, b) => getHabitStats(b).currentStreak - getHabitStats(a).currentStreak)[0];
+  const streakHabits = habits.filter((habit) => habit.trackingMode !== "percentage");
+  const bestHabit = [...streakHabits].sort((a, b) => getHabitStats(b).currentStreak - getHabitStats(a).currentStreak)[0];
   const totalDone = habits.reduce((sum, habit) => sum + countRecords(habit, "done"), 0);
   const activeDays = new Set(
     habits.flatMap((habit) => Object.entries(habit.records).filter(([, record]) => isDoneRecord(record)).map(([key]) => key)),
@@ -646,30 +701,55 @@ function openStatsDialog(id) {
   if (!habit) return;
   const stats = getHabitStats(habit);
   els.statsHabitName.textContent = habit.name;
-  els.habitStatsGrid.innerHTML = `
-    <div class="stat-card"><strong>${stats.currentStreak}</strong><span>רצף נוכחי</span></div>
-    <div class="stat-card"><strong>${stats.bestStreak}</strong><span>רצף שיא</span></div>
-    <div class="stat-card"><strong>${stats.last30Percent}%</strong><span>הצלחה ב־30 ימים</span></div>
-    <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
-    <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
-    <div class="stat-card"><strong>${stats.activeDays}</strong><span>ימים פעילים</span></div>
-  `;
-  els.goalList.innerHTML = GOAL_DAYS.map((goal) => {
-    const progress = Math.min(stats.currentStreak, goal);
-    const percent = Math.round((progress / goal) * 100);
-    const reached = stats.currentStreak >= goal;
-    return `
-      <div class="goal-row ${reached ? "reached" : ""}">
-        <div>
-          <strong>${goal} ימים ברצף</strong>
-          <span>${reached ? "הושג" : `${progress} מתוך ${goal}`}</span>
-        </div>
-        <div class="goal-bar" aria-label="התקדמות ליעד ${goal} ימים">
-          <span style="width:${percent}%"></span>
-        </div>
-      </div>
+  if (habit.trackingMode === "percentage") {
+    els.habitStatsGrid.innerHTML = `
+      <div class="stat-card"><strong>${stats.successPercent}%</strong><span>אחוז הצלחה כולל</span></div>
+      <div class="stat-card"><strong>${stats.last30Percent}%</strong><span>הצלחה ב־30 ימים</span></div>
+      <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
+      <div class="stat-card"><strong>${stats.eligibleDays}</strong><span>ימים מתוכננים</span></div>
+      <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
+      <div class="stat-card"><strong>${stats.activeDays}</strong><span>ימים שסומנו</span></div>
     `;
-  }).join("");
+    els.goalList.innerHTML = GOAL_DAYS.map((period) => {
+      const percent = getSuccessPercentForPeriod(habit, period);
+      return `
+        <div class="goal-row ${percent === 100 ? "reached" : ""}">
+          <div>
+            <strong>${period} ימים אחרונים</strong>
+            <span>${percent}% הצלחה</span>
+          </div>
+          <div class="goal-bar" aria-label="${percent}% הצלחה ב־${period} ימים אחרונים">
+            <span style="width:${percent}%"></span>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } else {
+    els.habitStatsGrid.innerHTML = `
+      <div class="stat-card"><strong>${stats.currentStreak}</strong><span>רצף נוכחי</span></div>
+      <div class="stat-card"><strong>${stats.bestStreak}</strong><span>רצף שיא</span></div>
+      <div class="stat-card"><strong>${stats.last30Percent}%</strong><span>הצלחה ב־30 ימים</span></div>
+      <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
+      <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
+      <div class="stat-card"><strong>${stats.activeDays}</strong><span>ימים פעילים</span></div>
+    `;
+    els.goalList.innerHTML = GOAL_DAYS.map((goal) => {
+      const progress = Math.min(stats.currentStreak, goal);
+      const percent = Math.round((progress / goal) * 100);
+      const reached = stats.currentStreak >= goal;
+      return `
+        <div class="goal-row ${reached ? "reached" : ""}">
+          <div>
+            <strong>${goal} ימים ברצף</strong>
+            <span>${reached ? "הושג" : `${progress} מתוך ${goal}`}</span>
+          </div>
+          <div class="goal-bar" aria-label="התקדמות ליעד ${goal} ימים">
+            <span style="width:${percent}%"></span>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
   els.statsDialog.showModal();
 }
 
@@ -684,6 +764,11 @@ function openHabitDialog(id = null) {
   els.habitName.value = habit?.name ?? "";
   els.habitTime.value = habit?.time ?? "בוקר";
   els.habitNote.value = habit?.note ?? "";
+  const trackingMode = habit?.trackingMode ?? "streak";
+  els.habitTrackingModes.forEach((input) => {
+    input.checked = input.value === trackingMode;
+  });
+  els.habitCountsTowardScore.checked = habit?.countsTowardScore ?? true;
   syncPickers();
   els.dialog.showModal();
   els.habitName.focus();
@@ -710,6 +795,8 @@ function handleSave(event) {
     note: els.habitNote.value.trim(),
     days: selectedDays,
     color: selectedColor,
+    trackingMode: [...els.habitTrackingModes].find((input) => input.checked)?.value ?? "streak",
+    countsTowardScore: els.habitCountsTowardScore.checked,
     records: existing?.records ?? {},
     createdAt: existing?.createdAt ?? new Date().toISOString(),
   };
@@ -852,7 +939,7 @@ function createCloudPayload() {
   localStorage.setItem(LOCAL_UPDATED_KEY, updatedAt);
   return {
     app: "retzef",
-    version: 3,
+    version: 4,
     updatedAt,
     habits,
     reading: readingData,
@@ -860,12 +947,15 @@ function createCloudPayload() {
 }
 
 function applyCloudPayload(payload) {
-  habits = payload.habits;
+  const normalizedHabits = normalizeHabits(payload.habits);
+  const migrated = JSON.stringify(normalizedHabits) !== JSON.stringify(payload.habits);
+  habits = normalizedHabits;
   applyReadingPayload(payload.reading);
-  localStorage.setItem(LOCAL_UPDATED_KEY, payload.updatedAt || new Date().toISOString());
+  localStorage.setItem(LOCAL_UPDATED_KEY, migrated ? new Date().toISOString() : payload.updatedAt || new Date().toISOString());
   saveHabits();
   saveReadingData();
   render();
+  if (migrated) scheduleCloudUpload();
 }
 
 function applyReadingPayload(reading) {
@@ -1006,7 +1096,7 @@ async function uploadCloudData({ manual }) {
   try {
     const payload = {
       app: "retzef",
-      version: 2,
+      version: 4,
       updatedAt: new Date().toISOString(),
       habits,
       reading: readingData,
@@ -1064,11 +1154,17 @@ async function downloadCloudData() {
     const payload = JSON.parse(file.content);
     if (!Array.isArray(payload.habits)) throw new Error("קובץ הענן לא תקין.");
 
-    habits = payload.habits;
+    const normalizedHabits = normalizeHabits(payload.habits);
+    const migrated = JSON.stringify(normalizedHabits) !== JSON.stringify(payload.habits);
+    habits = normalizedHabits;
     applyReadingPayload(payload.reading);
     saveHabits();
     saveReadingData();
     render();
+    if (migrated) {
+      touchLocalData();
+      scheduleCloudUpload();
+    }
     setCloudStatus("הנתונים נטענו מהענן.", "ok");
   } catch (error) {
     setCloudStatus(`טעינה מהענן נכשלה: ${friendlyGitHubError(error.message)}`, "error");
@@ -1144,16 +1240,44 @@ function getHabitStats(habit) {
   const records = habit.records ?? {};
   const currentStreak = getCurrentStreak(habit);
   const bestStreak = getBestStreak(habit);
-  const dueLast30 = Array.from({ length: 30 }, (_, index) => addDays(new Date(), -index)).filter((day) =>
-    isHabitDue(habit, day),
-  );
-  const doneLast30 = dueLast30.filter((day) => getRecordStatus(habit, dateKey(day)) === "done").length;
-  const last30Percent = dueLast30.length ? Math.round((doneLast30 / dueLast30.length) * 100) : 0;
+  const last30Percent = getSuccessPercentForPeriod(habit, 30);
   const doneCount = Object.values(records).filter((record) => isDoneRecord(record)).length;
   const missedCount = Object.values(records).filter((record) => isMissedRecord(record)).length;
   const activeDays = new Set(Object.keys(records).filter((key) => getRecordStatus(habit, key) !== "none")).size;
+  const eligibleHabitDays = getEligibleHabitDays(habit);
+  const eligibleDays = eligibleHabitDays.length;
+  const eligibleDone = eligibleHabitDays.filter((day) => getRecordStatus(habit, dateKey(day)) === "done").length;
+  const successPercent = eligibleDays ? Math.round((eligibleDone / eligibleDays) * 100) : 0;
 
-  return { currentStreak, bestStreak, last30Percent, doneCount, missedCount, activeDays };
+  return { currentStreak, bestStreak, last30Percent, successPercent, doneCount, missedCount, activeDays, eligibleDays };
+}
+
+function getEligibleHabitDays(habit, period = null) {
+  const today = startOfDay(new Date());
+  const habitStart = getHabitStartDate(habit);
+  const periodStart = period ? addDays(today, -(period - 1)) : habitStart;
+  const firstDay = periodStart > habitStart ? periodStart : habitStart;
+  const days = [];
+
+  for (let cursor = firstDay; cursor <= today; cursor = addDays(cursor, 1)) {
+    if (isHabitDue(habit, cursor)) days.push(cursor);
+  }
+  return days;
+}
+
+function getHabitStartDate(habit) {
+  const created = startOfDay(new Date(habit.createdAt));
+  const firstRecordKey = Object.keys(habit.records ?? {}).sort()[0];
+  const firstRecord = firstRecordKey ? parseDateKey(firstRecordKey) : null;
+  if (Number.isNaN(created.getTime())) return firstRecord ?? startOfDay(new Date());
+  return firstRecord && firstRecord < created ? firstRecord : created;
+}
+
+function getSuccessPercentForPeriod(habit, period) {
+  const eligibleDays = getEligibleHabitDays(habit, period);
+  if (!eligibleDays.length) return 0;
+  const done = eligibleDays.filter((day) => getRecordStatus(habit, dateKey(day)) === "done").length;
+  return Math.round((done / eligibleDays.length) * 100);
 }
 
 function getCurrentStreak(habit) {
@@ -1207,6 +1331,7 @@ function getScoreSummary(untilDate = new Date()) {
   let missed = 0;
 
   habits.forEach((habit) => {
+    if (habit.countsTowardScore === false) return;
     Object.entries(habit.records ?? {}).forEach(([key, record]) => {
       if (key > lastKey) return;
       if (isDoneRecord(record)) done += 1;
