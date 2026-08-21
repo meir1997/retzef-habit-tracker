@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icon-180.png" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=8" />
+    <link rel="stylesheet" href="styles.css?v=9" />
   </head>
   <body>
     <div class="app-shell">
@@ -214,6 +214,25 @@
         </label>
 
         <fieldset>
+          <legend>שיטת המעקב</legend>
+          <div class="segmented-control">
+            <label class="segmented-option">
+              <input type="radio" name="trackingMode" value="streak" checked />
+              <span>רצף ימים</span>
+            </label>
+            <label class="segmented-option">
+              <input type="radio" name="trackingMode" value="percentage" />
+              <span>אחוזי הצלחה</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <label class="switch-row" for="habitCountsTowardScore">
+          <span>נכלל בניקוד</span>
+          <input id="habitCountsTowardScore" type="checkbox" role="switch" checked />
+        </label>
+
+        <fieldset>
           <legend>ימים פעילים</legend>
           <div class="day-picker" id="dayPicker"></div>
         </fieldset>
@@ -309,7 +328,7 @@
 
     <script src="firebase-config.js?v=1"></script>
     <script type="module" src="firebase-sync.js?v=2"></script>
-    <script src="app.js?v=16"></script>
+    <script src="app.js?v=17"></script>
   </body>
 </html>
 
