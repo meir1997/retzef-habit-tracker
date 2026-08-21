@@ -1015,6 +1015,106 @@ select:focus {
   gap: 7px;
 }
 
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f1ece0;
+}
+
+.segmented-option {
+  display: block;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.segmented-option input {
+  position: absolute;
+  width: 1px;
+  min-height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented-option span {
+  display: grid;
+  min-height: 40px;
+  place-items: center;
+  padding: 6px 10px;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.segmented-option input:checked + span {
+  color: var(--ink);
+  background: var(--surface-strong);
+  box-shadow: 0 1px 4px rgba(35, 35, 31, 0.12);
+}
+
+.segmented-option input:focus-visible + span {
+  outline: 2px solid rgba(72, 120, 199, 0.45);
+}
+
+.switch-row {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbf8f0;
+  cursor: pointer;
+}
+
+.switch-row input {
+  position: relative;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 48px;
+  min-width: 48px;
+  min-height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #d8d1c4;
+  transition: background 160ms ease;
+}
+
+.switch-row input::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 4px rgba(35, 35, 31, 0.24);
+  content: "";
+  transition: transform 160ms ease;
+}
+
+.switch-row input:checked {
+  background: var(--green);
+}
+
+.switch-row input:checked::after {
+  transform: translateX(20px);
+}
+
+.switch-row input:focus-visible {
+  outline: 2px solid rgba(72, 120, 199, 0.45);
+  outline-offset: 2px;
+}
+
 .day-toggle,
 .color-toggle {
   display: grid;
