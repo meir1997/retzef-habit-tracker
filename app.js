@@ -610,7 +610,7 @@ function renderHabitList(container, items, options) {
         <p>${habit.time} · ${daysText}${note}</p>
       </div>
       <div class="habit-meta">
-        <span class="streak">${habit.trackingMode === "percentage" ? `${stats.successPercent}% הצלחה` : `${stats.currentStreak} ימים`}</span>
+        <span class="streak">${habit.trackingMode === "percentage" ? `${formatPercent(stats.successPercent)}% הצלחה` : `${stats.currentStreak} ימים`}</span>
         <button class="text-link" type="button">עריכה</button>
         <button class="text-link" type="button" data-action="stats">סטטיסטיקה</button>
       </div>
@@ -703,8 +703,8 @@ function openStatsDialog(id) {
   els.statsHabitName.textContent = habit.name;
   if (habit.trackingMode === "percentage") {
     els.habitStatsGrid.innerHTML = `
-      <div class="stat-card"><strong>${stats.successPercent}%</strong><span>אחוז הצלחה כולל</span></div>
-      <div class="stat-card"><strong>${stats.last30Percent}%</strong><span>הצלחה ב־30 ימים</span></div>
+      <div class="stat-card"><strong>${formatPercent(stats.successPercent)}%</strong><span>אחוז הצלחה כולל</span></div>
+      <div class="stat-card"><strong>${formatPercent(stats.last30Percent)}%</strong><span>הצלחה ב־30 ימים</span></div>
       <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
       <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
       <div class="stat-card"><strong>${stats.markedCount}</strong><span>ימים בחישוב</span></div>
@@ -716,9 +716,9 @@ function openStatsDialog(id) {
         <div class="goal-row ${percent === 100 ? "reached" : ""}">
           <div>
             <strong>${period} ימים אחרונים</strong>
-            <span>${percent}% הצלחה</span>
+            <span>${formatPercent(percent)}% הצלחה</span>
           </div>
-          <div class="goal-bar" aria-label="${percent}% הצלחה ב־${period} ימים אחרונים">
+          <div class="goal-bar" aria-label="${formatPercent(percent)}% הצלחה ב־${period} ימים אחרונים">
             <span style="width:${percent}%"></span>
           </div>
         </div>
@@ -728,7 +728,7 @@ function openStatsDialog(id) {
     els.habitStatsGrid.innerHTML = `
       <div class="stat-card"><strong>${stats.currentStreak}</strong><span>רצף נוכחי</span></div>
       <div class="stat-card"><strong>${stats.bestStreak}</strong><span>רצף שיא</span></div>
-      <div class="stat-card"><strong>${stats.last30Percent}%</strong><span>הצלחה ב־30 ימים</span></div>
+      <div class="stat-card"><strong>${formatPercent(stats.last30Percent)}%</strong><span>הצלחה ב־30 ימים</span></div>
       <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
       <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
       <div class="stat-card"><strong>${stats.activeDays}</strong><span>ימים פעילים</span></div>
@@ -1247,7 +1247,7 @@ function getHabitStats(habit) {
   const activeDays = new Set(Object.keys(records).filter((key) => getRecordStatus(habit, key) !== "none")).size;
   const eligibleHabitDays = getEligibleHabitDays(habit);
   const eligibleDays = eligibleHabitDays.length;
-  const successPercent = markedCount ? Math.round((doneCount / markedCount) * 100) : 0;
+  const successPercent = markedCount ? Math.round((doneCount / markedCount) * 1000) / 10 : 0;
 
   return { currentStreak, bestStreak, last30Percent, successPercent, doneCount, missedCount, markedCount, activeDays, eligibleDays };
 }
@@ -1282,7 +1282,11 @@ function getSuccessPercentForPeriod(habit, period) {
   );
   if (!records.length) return 0;
   const done = records.filter(([, record]) => isDoneRecord(record)).length;
-  return Math.round((done / records.length) * 100);
+  return Math.round((done / records.length) * 1000) / 10;
+}
+
+function formatPercent(value) {
+  return Number(value || 0).toFixed(1);
 }
 
 function getCurrentStreak(habit) {
