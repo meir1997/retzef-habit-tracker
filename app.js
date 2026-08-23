@@ -1437,7 +1437,21 @@ function escapeText(value) {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    let refreshing = false;
+
+    if (hadController) {
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+    }
+
+    navigator.serviceWorker
+      .register("sw.js?v=24")
+      .then((registration) => registration.update())
+      .catch(() => {});
   }
 }
 
