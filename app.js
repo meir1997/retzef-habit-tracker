@@ -706,9 +706,9 @@ function openStatsDialog(id) {
       <div class="stat-card"><strong>${stats.successPercent}%</strong><span>אחוז הצלחה כולל</span></div>
       <div class="stat-card"><strong>${stats.last30Percent}%</strong><span>הצלחה ב־30 ימים</span></div>
       <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
-      <div class="stat-card"><strong>${stats.eligibleDays}</strong><span>ימים מתוכננים</span></div>
       <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
-      <div class="stat-card"><strong>${stats.activeDays}</strong><span>ימים שסומנו</span></div>
+      <div class="stat-card"><strong>${stats.markedCount}</strong><span>ימים בחישוב</span></div>
+      <div class="stat-card"><strong>${habit.countsTowardScore ? "כן" : "לא"}</strong><span>נכלל בניקוד</span></div>
     `;
     els.goalList.innerHTML = GOAL_DAYS.map((period) => {
       const percent = getSuccessPercentForPeriod(habit, period);
@@ -1243,13 +1243,13 @@ function getHabitStats(habit) {
   const last30Percent = getSuccessPercentForPeriod(habit, 30);
   const doneCount = Object.values(records).filter((record) => isDoneRecord(record)).length;
   const missedCount = Object.values(records).filter((record) => isMissedRecord(record)).length;
+  const markedCount = doneCount + missedCount;
   const activeDays = new Set(Object.keys(records).filter((key) => getRecordStatus(habit, key) !== "none")).size;
   const eligibleHabitDays = getEligibleHabitDays(habit);
   const eligibleDays = eligibleHabitDays.length;
-  const eligibleDone = eligibleHabitDays.filter((day) => getRecordStatus(habit, dateKey(day)) === "done").length;
-  const successPercent = eligibleDays ? Math.round((eligibleDone / eligibleDays) * 100) : 0;
+  const successPercent = markedCount ? Math.round((doneCount / markedCount) * 100) : 0;
 
-  return { currentStreak, bestStreak, last30Percent, successPercent, doneCount, missedCount, activeDays, eligibleDays };
+  return { currentStreak, bestStreak, last30Percent, successPercent, doneCount, missedCount, markedCount, activeDays, eligibleDays };
 }
 
 function getEligibleHabitDays(habit, period = null) {
@@ -1274,10 +1274,15 @@ function getHabitStartDate(habit) {
 }
 
 function getSuccessPercentForPeriod(habit, period) {
-  const eligibleDays = getEligibleHabitDays(habit, period);
-  if (!eligibleDays.length) return 0;
-  const done = eligibleDays.filter((day) => getRecordStatus(habit, dateKey(day)) === "done").length;
-  return Math.round((done / eligibleDays.length) * 100);
+  const today = startOfDay(new Date());
+  const firstKey = dateKey(addDays(today, -(period - 1)));
+  const lastKey = dateKey(today);
+  const records = Object.entries(habit.records ?? {}).filter(([key, record]) =>
+    key >= firstKey && key <= lastKey && (isDoneRecord(record) || isMissedRecord(record)),
+  );
+  if (!records.length) return 0;
+  const done = records.filter(([, record]) => isDoneRecord(record)).length;
+  return Math.round((done / records.length) * 100);
 }
 
 function getCurrentStreak(habit) {
