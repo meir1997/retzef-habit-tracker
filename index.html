@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icon-180.png" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=9" />
+    <link rel="stylesheet" href="styles.css?v=10" />
   </head>
   <body>
     <div class="app-shell">
@@ -265,6 +265,20 @@
         </div>
         <div class="habit-stats-grid" id="habitStatsGrid"></div>
         <div class="goal-list" id="goalList"></div>
+        <section class="habit-calendar-panel" aria-labelledby="habitCalendarTitle">
+          <div class="habit-calendar-head">
+            <button class="calendar-nav-button" id="statsPrevMonth" type="button" aria-label="חודש קודם">›</button>
+            <h3 id="habitCalendarTitle">לוח חודשי</h3>
+            <button class="calendar-nav-button" id="statsNextMonth" type="button" aria-label="חודש הבא">‹</button>
+          </div>
+          <div class="habit-calendar-weekdays" id="habitCalendarWeekdays" aria-hidden="true"></div>
+          <div class="habit-calendar-grid" id="habitCalendarGrid" aria-label="לוח סימונים חודשי"></div>
+          <div class="habit-calendar-legend" aria-label="מקרא">
+            <span><i class="done" aria-hidden="true"></i>הצלחה</span>
+            <span><i class="missed" aria-hidden="true"></i>כישלון</span>
+            <span><i class="unmarked" aria-hidden="true"></i>לא סומן</span>
+          </div>
+        </section>
       </div>
     </dialog>
 
@@ -328,7 +342,6 @@
 
     <script src="firebase-config.js?v=1"></script>
     <script type="module" src="firebase-sync.js?v=2"></script>
-    <script src="app.js?v=21"></script>
+    <script src="app.js?v=22"></script>
   </body>
 </html>
-
