@@ -169,15 +169,20 @@ function normalizeHabits(items) {
 
 function normalizeHabit(habit) {
   const percentageDefault = isPercentageMigrationHabit(habit?.name);
+  const forcePercentage = isForcedPercentageHabit(habit?.name);
   const normalizedDays = Array.isArray(habit?.days)
     ? [...new Set(habit.days.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((a, b) => a - b)
     : [];
-  const trackingMode = habit?.trackingMode === "percentage" || habit?.trackingMode === "streak"
-    ? habit.trackingMode
-    : percentageDefault ? "percentage" : "streak";
-  const countsTowardScore = typeof habit?.countsTowardScore === "boolean"
-    ? habit.countsTowardScore
-    : !percentageDefault;
+  const trackingMode = forcePercentage
+    ? "percentage"
+    : habit?.trackingMode === "percentage" || habit?.trackingMode === "streak"
+      ? habit.trackingMode
+      : percentageDefault ? "percentage" : "streak";
+  const countsTowardScore = forcePercentage
+    ? false
+    : typeof habit?.countsTowardScore === "boolean"
+      ? habit.countsTowardScore
+      : !percentageDefault;
 
   return {
     ...habit,
@@ -200,6 +205,11 @@ function isPercentageMigrationHabit(name) {
     .split(/[^\u0590-\u05ff]+/)
     .filter(Boolean);
   return words.includes("טלפון") || words.includes("חצי");
+}
+
+function isForcedPercentageHabit(name) {
+  const compactName = String(name || "").trim().replaceAll(" ", "");
+  return compactName === "ק.ר";
 }
 
 function saveHabits() {
@@ -1449,7 +1459,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=24")
+      .register("sw.js?v=25")
       .then((registration) => registration.update())
       .catch(() => {});
   }
