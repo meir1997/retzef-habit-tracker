@@ -57,6 +57,11 @@ const els = {
   statsHabitName: document.querySelector("#statsHabitName"),
   habitStatsGrid: document.querySelector("#habitStatsGrid"),
   goalList: document.querySelector("#goalList"),
+  statsPrevMonth: document.querySelector("#statsPrevMonth"),
+  statsNextMonth: document.querySelector("#statsNextMonth"),
+  habitCalendarTitle: document.querySelector("#habitCalendarTitle"),
+  habitCalendarWeekdays: document.querySelector("#habitCalendarWeekdays"),
+  habitCalendarGrid: document.querySelector("#habitCalendarGrid"),
   openAddBook: document.querySelector("#openAddBook"),
   readingScore: document.querySelector("#readingScore"),
   readingTotalPages: document.querySelector("#readingTotalPages"),
@@ -96,6 +101,8 @@ let googleBusy = false;
 let googleUser = null;
 let googleCloudReady = false;
 let dayRefreshTimer = null;
+let statsHabitId = null;
+let statsCalendarMonth = startOfMonth(new Date());
 
 function start() {
   buildPickers();
@@ -260,6 +267,8 @@ function bindEvents() {
   document.querySelector("#openAddSecondary").addEventListener("click", () => openHabitDialog());
   document.querySelector("#closeDialog").addEventListener("click", () => els.dialog.close());
   els.closeStatsDialog.addEventListener("click", () => els.statsDialog.close());
+  els.statsPrevMonth.addEventListener("click", () => changeStatsCalendarMonth(-1));
+  els.statsNextMonth.addEventListener("click", () => changeStatsCalendarMonth(1));
   els.prevDay.addEventListener("click", () => setSelectedDate(addDays(selectedDate, -1)));
   els.goToday.addEventListener("click", () => setSelectedDate(new Date()));
   els.nextDay.addEventListener("click", () => setSelectedDate(addDays(selectedDate, 1)));
@@ -709,6 +718,8 @@ function setSelectedDate(date) {
 function openStatsDialog(id) {
   const habit = habits.find((item) => item.id === id);
   if (!habit) return;
+  statsHabitId = habit.id;
+  statsCalendarMonth = startOfMonth(new Date());
   const stats = getHabitStats(habit);
   els.statsHabitName.textContent = habit.name;
   if (habit.trackingMode === "percentage") {
@@ -760,7 +771,84 @@ function openStatsDialog(id) {
       `;
     }).join("");
   }
+  renderHabitCalendar();
   els.statsDialog.showModal();
+}
+
+function changeStatsCalendarMonth(amount) {
+  const habit = habits.find((item) => item.id === statsHabitId);
+  if (!habit) return;
+  const firstMonth = startOfMonth(getHabitStartDate(habit));
+  const currentMonth = startOfMonth(new Date());
+  const requestedMonth = addMonths(statsCalendarMonth, amount);
+  if (requestedMonth < firstMonth || requestedMonth > currentMonth) return;
+  statsCalendarMonth = requestedMonth;
+  renderHabitCalendar();
+}
+
+function renderHabitCalendar() {
+  const habit = habits.find((item) => item.id === statsHabitId);
+  if (!habit) return;
+
+  const monthStart = startOfMonth(statsCalendarMonth);
+  const habitStart = startOfDay(getHabitStartDate(habit));
+  const firstMonth = startOfMonth(habitStart);
+  const today = startOfDay(new Date());
+  const currentMonth = startOfMonth(today);
+  const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
+  const monthName = new Intl.DateTimeFormat("he-IL", { month: "long", year: "numeric" }).format(monthStart);
+
+  els.habitCalendarTitle.textContent = monthName;
+  els.habitCalendarWeekdays.innerHTML = dayLabels.map((label) => `<span>${label}</span>`).join("");
+  els.statsPrevMonth.disabled = monthStart <= firstMonth;
+  els.statsNextMonth.disabled = monthStart >= currentMonth;
+
+  const cells = [];
+  for (let index = 0; index < monthStart.getDay(); index += 1) {
+    cells.push('<span class="habit-calendar-day outside" aria-hidden="true"></span>');
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
+    const key = dateKey(date);
+    const recordStatus = getRecordStatus(habit, key);
+    let status = "unmarked";
+    let marker = "–";
+    let statusLabel = "לא סומן";
+
+    if (date < habitStart) {
+      status = "unavailable";
+      marker = "";
+      statusLabel = "לפני תחילת ההרגל";
+    } else if (date > today) {
+      status = "unavailable";
+      marker = "";
+      statusLabel = "יום עתידי";
+    } else if (!isHabitDue(habit, date)) {
+      status = "not-due";
+      marker = "";
+      statusLabel = "ההרגל לא מתוכנן ליום זה";
+    } else if (recordStatus === "done") {
+      status = "done";
+      marker = "✓";
+      statusLabel = "הצלחה";
+    } else if (recordStatus === "missed") {
+      status = "missed";
+      marker = "×";
+      statusLabel = "כישלון";
+    }
+
+    const todayClass = isSameDate(date, today) ? " today" : "";
+    const ariaLabel = `${formatFullDate(date)}, ${statusLabel}`;
+    cells.push(`
+      <span class="habit-calendar-day ${status}${todayClass}" aria-label="${ariaLabel}">
+        <b>${day}</b>
+        <small aria-hidden="true">${marker}</small>
+      </span>
+    `);
+  }
+
+  els.habitCalendarGrid.innerHTML = cells.join("");
 }
 
 function openHabitDialog(id = null) {
@@ -1382,6 +1470,14 @@ function addDays(date, amount) {
   return next;
 }
 
+function startOfMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date, amount) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
 function getTrackerStartDate() {
   const dates = habits.flatMap((habit) => [
     habit.createdAt ? startOfDay(new Date(habit.createdAt)) : null,
@@ -1459,7 +1555,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=25")
+      .register("sw.js?v=26")
       .then((registration) => registration.update())
       .catch(() => {});
   }
