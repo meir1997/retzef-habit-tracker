@@ -2,8 +2,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/fireba
 import {
   getAuth,
   GoogleAuthProvider,
+  getRedirectResult,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
 import {
@@ -34,8 +36,14 @@ async function signIn() {
   if (!configured) throw new Error("Firebase עדיין לא מוגדר.");
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  const result = await signInWithPopup(auth, provider);
-  return result.user;
+  try {
+    const result = await signInWithPopup(auth, provider);
+    return result.user;
+  } catch (error) {
+    if (error?.code !== "auth/popup-blocked") throw error;
+    await signInWithRedirect(auth, provider);
+    return null;
+  }
 }
 
 async function signOutUser() {
@@ -76,6 +84,7 @@ if (configured) {
   auth = getAuth(app);
   auth.languageCode = "he";
   database = getFirestore(app);
+  getRedirectResult(auth).catch(() => {});
   onAuthStateChanged(auth, (user) => {
     notify(user);
     readyResolve(user);
@@ -85,4 +94,3 @@ if (configured) {
 }
 
 window.dispatchEvent(new CustomEvent("retzef-firebase-ready"));
-
