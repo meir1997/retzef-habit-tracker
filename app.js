@@ -48,6 +48,7 @@ const els = {
   habitTime: document.querySelector("#habitTime"),
   habitNote: document.querySelector("#habitNote"),
   habitTrackingModes: document.querySelectorAll('input[name="trackingMode"]'),
+  habitTypes: document.querySelectorAll('input[name="habitType"]'),
   habitCountsTowardScore: document.querySelector("#habitCountsTowardScore"),
   dayPicker: document.querySelector("#dayPicker"),
   colorPicker: document.querySelector("#colorPicker"),
@@ -177,6 +178,7 @@ function normalizeHabits(items) {
 function normalizeHabit(habit) {
   const percentageDefault = isPercentageMigrationHabit(habit?.name);
   const forcePercentage = isForcedPercentageHabit(habit?.name);
+  const isBonus = habit?.isBonus === true;
   const normalizedDays = Array.isArray(habit?.days)
     ? [...new Set(habit.days.map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort((a, b) => a - b)
     : [];
@@ -185,7 +187,9 @@ function normalizeHabit(habit) {
     : habit?.trackingMode === "percentage" || habit?.trackingMode === "streak"
       ? habit.trackingMode
       : percentageDefault ? "percentage" : "streak";
-  const countsTowardScore = forcePercentage
+  const countsTowardScore = isBonus
+    ? true
+    : forcePercentage
     ? false
     : typeof habit?.countsTowardScore === "boolean"
       ? habit.countsTowardScore
@@ -200,6 +204,7 @@ function normalizeHabit(habit) {
     days: normalizedDays.length ? normalizedDays : [0, 1, 2, 3, 4, 5, 6],
     color: habit?.color || colorOptions[0],
     trackingMode,
+    isBonus,
     countsTowardScore,
     records: habit?.records && typeof habit.records === "object" ? habit.records : {},
     createdAt: habit?.createdAt || new Date().toISOString(),
@@ -278,6 +283,7 @@ function bindEvents() {
   });
 
   els.form.addEventListener("submit", handleSave);
+  els.habitTypes.forEach((input) => input.addEventListener("change", syncHabitTypeControls));
   els.deleteHabit.addEventListener("click", handleDelete);
   els.connectGoogle.addEventListener("click", handleConnectGoogle);
   els.syncGoogle.addEventListener("click", () => reconcileGoogleCloud({ manual: true }));
@@ -620,12 +626,17 @@ function renderHabitList(container, items, options) {
         <button class="habit-mark ${done ? "done" : ""}" type="button" data-action="done" aria-label="${doneLabel}" ${canMark ? "" : "disabled"}>
           <span aria-hidden="true">✓</span>
         </button>
-        <button class="habit-mark miss ${missed ? "missed" : ""}" type="button" data-action="missed" aria-label="${missedLabel}" ${canMark ? "" : "disabled"}>
-          <span aria-hidden="true">×</span>
-        </button>
+        ${habit.isBonus ? "" : `
+          <button class="habit-mark miss ${missed ? "missed" : ""}" type="button" data-action="missed" aria-label="${missedLabel}" ${canMark ? "" : "disabled"}>
+            <span aria-hidden="true">×</span>
+          </button>
+        `}
       </div>
       <div class="habit-title">
-        <h3>${escapeText(habit.name)}</h3>
+        <div class="habit-name-row">
+          <h3>${escapeText(habit.name)}</h3>
+          ${habit.isBonus ? '<span class="bonus-label">בונוס</span>' : ""}
+        </div>
         <p>${habit.time} · ${daysText}${note}</p>
       </div>
       <div class="habit-meta">
@@ -636,7 +647,7 @@ function renderHabitList(container, items, options) {
     `;
 
     card.querySelector('[data-action="done"]').addEventListener("click", () => setHabitStatus(habit.id, "done", listDate));
-    card.querySelector('[data-action="missed"]').addEventListener("click", () => setHabitStatus(habit.id, "missed", listDate));
+    card.querySelector('[data-action="missed"]')?.addEventListener("click", () => setHabitStatus(habit.id, "missed", listDate));
     card.querySelector(".text-link").addEventListener("click", () => openHabitDialog(habit.id));
     card.querySelector('[data-action="stats"]').addEventListener("click", () => openStatsDialog(habit.id));
 
@@ -729,7 +740,7 @@ function openStatsDialog(id) {
       <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
       <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
       <div class="stat-card"><strong>${stats.markedCount}</strong><span>ימים בחישוב</span></div>
-      <div class="stat-card"><strong>${habit.countsTowardScore ? "כן" : "לא"}</strong><span>נכלל בניקוד</span></div>
+      <div class="stat-card"><strong>${habit.isBonus ? "בונוס" : habit.countsTowardScore ? "כן" : "לא"}</strong><span>נכלל בניקוד</span></div>
     `;
     els.goalList.innerHTML = GOAL_DAYS.map((period) => {
       const percent = getSuccessPercentForPeriod(habit, period);
@@ -866,7 +877,12 @@ function openHabitDialog(id = null) {
   els.habitTrackingModes.forEach((input) => {
     input.checked = input.value === trackingMode;
   });
+  const habitType = habit?.isBonus ? "bonus" : "regular";
+  els.habitTypes.forEach((input) => {
+    input.checked = input.value === habitType;
+  });
   els.habitCountsTowardScore.checked = habit?.countsTowardScore ?? true;
+  syncHabitTypeControls();
   syncPickers();
   els.dialog.showModal();
   els.habitName.focus();
@@ -882,10 +898,17 @@ function syncPickers() {
   });
 }
 
+function syncHabitTypeControls() {
+  const isBonus = [...els.habitTypes].some((input) => input.checked && input.value === "bonus");
+  if (isBonus) els.habitCountsTowardScore.checked = true;
+  els.habitCountsTowardScore.disabled = isBonus;
+}
+
 function handleSave(event) {
   event.preventDefault();
   const id = els.habitId.value || crypto.randomUUID();
   const existing = habits.find((habit) => habit.id === id);
+  const isBonus = [...els.habitTypes].some((input) => input.checked && input.value === "bonus");
   const nextHabit = {
     id,
     name: els.habitName.value.trim(),
@@ -894,7 +917,8 @@ function handleSave(event) {
     days: selectedDays,
     color: selectedColor,
     trackingMode: [...els.habitTrackingModes].find((input) => input.checked)?.value ?? "streak",
-    countsTowardScore: els.habitCountsTowardScore.checked,
+    isBonus,
+    countsTowardScore: isBonus ? true : els.habitCountsTowardScore.checked,
     records: existing?.records ?? {},
     createdAt: existing?.createdAt ?? new Date().toISOString(),
   };
@@ -1442,7 +1466,7 @@ function getScoreSummary(untilDate = new Date()) {
     Object.entries(habit.records ?? {}).forEach(([key, record]) => {
       if (key > lastKey) return;
       if (isDoneRecord(record)) done += 1;
-      if (isMissedRecord(record)) missed += 1;
+      if (!habit.isBonus && isMissedRecord(record)) missed += 1;
     });
   });
 
@@ -1555,7 +1579,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=27")
+      .register("sw.js?v=29")
       .then((registration) => registration.update())
       .catch(() => {});
   }
