@@ -428,6 +428,23 @@ main {
   overflow-wrap: anywhere;
 }
 
+.habit-name-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.bonus-label {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border-radius: 5px;
+  color: #6d5310;
+  background: #f4df9f;
+  font-size: 10px;
+  font-weight: 900;
+}
+
 .habit-title p {
   color: var(--muted);
   font-size: 13px;
