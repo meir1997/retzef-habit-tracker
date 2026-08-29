@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icon-180.png" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=12" />
   </head>
   <body>
     <div class="app-shell">
@@ -227,6 +227,20 @@
           </div>
         </fieldset>
 
+        <fieldset>
+          <legend>סוג ההרגל</legend>
+          <div class="segmented-control">
+            <label class="segmented-option">
+              <input type="radio" name="habitType" value="regular" checked />
+              <span>רגיל</span>
+            </label>
+            <label class="segmented-option">
+              <input type="radio" name="habitType" value="bonus" />
+              <span>בונוס</span>
+            </label>
+          </div>
+        </fieldset>
+
         <label class="switch-row" for="habitCountsTowardScore">
           <span>נכלל בניקוד</span>
           <input id="habitCountsTowardScore" type="checkbox" role="switch" checked />
@@ -342,6 +356,6 @@
 
     <script src="firebase-config.js?v=1"></script>
     <script type="module" src="firebase-sync.js?v=3"></script>
-    <script src="app.js?v=23"></script>
+    <script src="app.js?v=24"></script>
   </body>
 </html>
