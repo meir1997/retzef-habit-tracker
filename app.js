@@ -1033,6 +1033,12 @@ async function reconcileGoogleCloud({ manual }) {
 
     if (!Array.isArray(remote.habits)) throw new Error("נתוני הענן אינם תקינים.");
 
+    if (isStarterOnlyHabitData(habits)) {
+      applyCloudPayload(remote);
+      setGoogleCloudStatus("ההרגלים שלך שוחזרו מ־Google.", "ok");
+      return;
+    }
+
     const remoteTime = Date.parse(remote.updatedAt ?? "") || 0;
     const localTime = Date.parse(localUpdatedAt ?? "") || 0;
 
@@ -1101,6 +1107,13 @@ function applyReadingPayload(reading) {
     startedAt: reading.startedAt ?? null,
     books: reading.books.map(normalizeBook),
   };
+}
+
+function isStarterOnlyHabitData(items) {
+  const starterNames = new Set(["שתיית מים", "הליכה קצרה", "קריאה"]);
+  const manualHabits = items.filter((habit) => habit.automation?.type !== SCREEN_TIME_AUTOMATION_TYPE);
+  return manualHabits.length === starterNames.size
+    && manualHabits.every((habit) => starterNames.has(habit.name) && Object.keys(habit.records ?? {}).length === 0);
 }
 
 function touchLocalData() {
@@ -1683,7 +1696,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=32")
+      .register("sw.js?v=33")
       .then((registration) => registration.update())
       .catch(() => {});
   }
