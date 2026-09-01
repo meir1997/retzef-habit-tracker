@@ -114,6 +114,7 @@ function start() {
   buildPickers();
   bindEvents();
   render();
+  syncScreenTimeBonus();
   initializeGoogleCloud();
   scheduleNextDayRefresh();
   registerServiceWorker();
@@ -457,7 +458,7 @@ function getReadingStats(today = new Date()) {
     0,
     readingData.books.reduce((sum, book) => sum + (Number(book.pageLog?.[todayKey]) || 0), 0),
   );
-  return { totalPages, elapsedDays, todayPages, score: totalPages - elapsedDays * DAILY_READING_GOAL };…6267 tokens truncated…rtedAt: reading.startedAt ?? null,
+  return { totalPages, elapsedDays, todayPages, score: totalPages - elapsedDay…6274 tokens truncated…edAt: reading.startedAt ?? null,
     books: reading.books.map(normalizeBook),
   };
 }
@@ -1042,10 +1043,11 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=30")
+      .register("sw.js?v=31")
       .then((registration) => registration.update())
       .catch(() => {});
   }
 }
 
 start();
+
