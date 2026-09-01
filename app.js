@@ -4,6 +4,10 @@ const CLOUD_TOKEN_KEY = "retzef-github-token-v1";
 const CLOUD_GIST_KEY = "retzef-github-gist-id-v1";
 const CLOUD_FILE_NAME = "retzef-habit-data.json";
 const LOCAL_UPDATED_KEY = "retzef-local-updated-at-v1";
+const SCREEN_TIME_ENDPOINT = "https://script.google.com/macros/s/AKfycbyLZh6huB1jR-sB52F5gf-vuo8ozelARbpC2wQPo2jLj-aicdiAb2z7zKC5vz7b2Rp9Qw/exec";
+const SCREEN_TIME_HABIT_ID = "screen-time-under-3-hours-v1";
+const SCREEN_TIME_AUTOMATION_TYPE = "screen-time-under-hours";
+const SCREEN_TIME_HABIT_NAME = "שימוש בטלפון - פחות מ־3 שעות";
 const GOAL_DAYS = [7, 30, 60, 100];
 const DAILY_READING_GOAL = 5;
 const dayLabels = ["א", "ב", "ג", "ד", "ה", "ו", "ש"];
@@ -104,6 +108,7 @@ let googleCloudReady = false;
 let dayRefreshTimer = null;
 let statsHabitId = null;
 let statsCalendarMonth = startOfMonth(new Date());
+let screenTimeSyncPromise = null;
 
 function start() {
   buildPickers();
@@ -297,6 +302,9 @@ function bindEvents() {
   els.deleteBook.addEventListener("click", handleBookDelete);
   els.closePageDialog.addEventListener("click", () => els.pageDialog.close());
   els.pageForm.addEventListener("submit", handlePageUpdate);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") syncScreenTimeBonus();
+  });
 }
 
 function buildPickers() {
@@ -449,647 +457,102 @@ function getReadingStats(today = new Date()) {
     0,
     readingData.books.reduce((sum, book) => sum + (Number(book.pageLog?.[todayKey]) || 0), 0),
   );
-  return { totalPages, elapsedDays, todayPages, score: totalPages - elapsedDays * DAILY_READING_GOAL };
-}
-
-function openBookDialog(id = null) {
-  const book = readingData.books.find((item) => item.id === id);
-  els.bookForm.reset();
-  els.bookId.value = book?.id ?? "";
-  els.bookDialogMode.textContent = book ? "עריכת ספר" : "ספר חדש";
-  els.bookTitle.value = book?.title ?? "";
-  els.bookAuthor.value = book?.author ?? "";
-  els.bookTotalPages.value = book?.totalPages ?? "";
-  els.bookInitialPage.value = book?.startPage ?? 0;
-  els.bookInitialPageLabel.hidden = Boolean(book);
-  els.deleteBook.hidden = !book;
-  els.bookDialog.showModal();
-  els.bookTitle.focus();
-}
-
-function handleBookSave(event) {
-  event.preventDefault();
-  const id = els.bookId.value || crypto.randomUUID();
-  const existing = readingData.books.find((book) => book.id === id);
-  const totalPagesValue = Math.max(0, Math.round(Number(els.bookTotalPages.value) || 0));
-  const totalPages = totalPagesValue || null;
-
-  if (existing) {
-    const previousPage = existing.currentPage;
-    existing.title = els.bookTitle.value.trim();
-    existing.author = els.bookAuthor.value.trim();
-    existing.totalPages = totalPages;
-    if (totalPages && existing.currentPage > totalPages) {
-      existing.currentPage = totalPages;
-      recordBookPageChange(existing, existing.currentPage - previousPage);
-    }
-  } else {
-    const enteredPage = Math.max(0, Math.round(Number(els.bookInitialPage.value) || 0));
-    const initialPage = totalPages ? Math.min(enteredPage, totalPages) : enteredPage;
-    readingData.books.unshift({
-      id,
-      title: els.bookTitle.value.trim(),
-      author: els.bookAuthor.value.trim(),
-      totalPages,
-      startPage: initialPage,
-      currentPage: initialPage,
-      pageLog: {},
-      createdAt: new Date().toISOString(),
-    });
-    if (!readingData.startedAt) readingData.startedAt = new Date().toISOString();
-  }
-
-  els.bookDialog.close();
-  commitReadingChange();
-}
-
-function handleBookDelete() {
-  const id = els.bookId.value;
-  const book = readingData.books.find((item) => item.id === id);
-  if (!book) return;
-  if (!window.confirm(`למחוק את “${book.title}” ואת נקודות הקריאה שלו?`)) return;
-  readingData.books = readingData.books.filter((item) => item.id !== id);
-  els.bookDialog.close();
-  commitReadingChange();
-}
-
-function openPageDialog(id) {
-  const book = readingData.books.find((item) => item.id === id);
-  if (!book) return;
-  els.pageBookId.value = book.id;
-  els.pageBookTitle.textContent = book.title;
-  els.bookCurrentPage.value = book.currentPage;
-  els.bookCurrentPage.max = book.totalPages ?? "";
-  els.pageDialog.showModal();
-  els.bookCurrentPage.focus();
-  els.bookCurrentPage.select();
-}
-
-function handlePageUpdate(event) {
-  event.preventDefault();
-  updateBookPage(els.pageBookId.value, Number(els.bookCurrentPage.value));
-  els.pageDialog.close();
-}
-
-function updateBookPage(id, nextPageValue) {
-  const book = readingData.books.find((item) => item.id === id);
-  if (!book) return;
-  let nextPage = Math.max(0, Math.round(Number(nextPageValue) || 0));
-  if (book.totalPages) nextPage = Math.min(nextPage, book.totalPages);
-  const difference = nextPage - book.currentPage;
-  if (!difference) return;
-  book.currentPage = nextPage;
-  recordBookPageChange(book, difference);
-  commitReadingChange();
-}
-
-function recordBookPageChange(book, difference) {
-  if (!difference) return;
-  const key = dateKey(new Date());
-  const nextValue = (Number(book.pageLog?.[key]) || 0) + difference;
-  book.pageLog = book.pageLog ?? {};
-  if (nextValue) book.pageLog[key] = nextValue;
-  else delete book.pageLog[key];
-}
-
-function commitReadingChange() {
-  touchLocalData();
-  render();
-  scheduleCloudUpload();
-}
-
-function scheduleNextDayRefresh() {
-  window.clearTimeout(dayRefreshTimer);
-  const now = new Date();
-  const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
-  dayRefreshTimer = window.setTimeout(() => {
-    render();
-    scheduleNextDayRefresh();
-  }, nextDay.getTime() - now.getTime());
-}
-
-function renderDateStrip(selected, today, firstAvailableDate) {
-  els.weekStrip.innerHTML = "";
-
-  for (let day = startOfDay(firstAvailableDate); day <= startOfDay(today); day = addDays(day, 1)) {
-    const key = dateKey(day);
-    const due = habits.filter((habit) => isHabitDue(habit, day));
-    const done = due.filter((habit) => getRecordStatus(habit, key) === "done");
-    const pill = document.createElement("button");
-    pill.className = "day-pill";
-    pill.type = "button";
-    pill.classList.toggle("selected", key === dateKey(selected));
-    pill.classList.toggle("today", key === dateKey(today));
-    pill.classList.toggle("done", due.length > 0 && done.length === due.length);
-    pill.setAttribute("aria-label", `בחירת ${formatFullDate(day)}`);
-    pill.innerHTML = `<span>${dayLabels[day.getDay()]}</span><strong>${day.getDate()}</strong>`;
-    pill.addEventListener("click", () => setSelectedDate(day));
-    els.weekStrip.appendChild(pill);
-  }
-
-  window.requestAnimationFrame(() => {
-    els.weekStrip.querySelector(".day-pill.selected")?.scrollIntoView({
-      inline: "center",
-      block: "nearest",
-      behavior: "smooth",
-    });
-  });
-}
-
-function renderHabitList(container, items, options) {
-  container.innerHTML = "";
-
-  if (!items.length) {
-    container.innerHTML = `<div class="empty-state">אין כאן הרגלים עדיין. אפשר להוסיף הרגל קטן וברור בלחיצה על +.</div>`;
-    return;
-  }
-
-  items.forEach((habit) => {
-    const listDate = startOfDay(options.date ?? new Date());
-    const key = dateKey(listDate);
-    const canMark = isHabitDue(habit, listDate) && !isFutureDate(listDate);
-    const status = getRecordStatus(habit, key);
-    const done = status === "done";
-    const missed = status === "missed";
-    const card = document.createElement("article");
-    card.className = "habit-card";
-    card.style.setProperty("--habit-color", habit.color);
-
-    const daysText = habit.days.length === 7 ? "כל יום" : habit.days.map((day) => dayLabels[day]).join(", ");
-    const note = habit.note ? ` · ${escapeText(habit.note)}` : "";
-    const doneLabel = canMark ? (done ? "ביטול סימון בוצע" : "סימון כבוצע") : "ההרגל לא מתוכנן ליום הזה";
-    const missedLabel = canMark ? (missed ? "ביטול סימון X" : "סימון X") : "ההרגל לא מתוכנן ליום הזה";
-    const stats = getHabitStats(habit);
-
-    card.innerHTML = `
-      <div class="habit-actions">
-        <button class="habit-mark ${done ? "done" : ""}" type="button" data-action="done" aria-label="${doneLabel}" ${canMark ? "" : "disabled"}>
-          <span aria-hidden="true">✓</span>
-        </button>
-        ${habit.isBonus ? "" : `
-          <button class="habit-mark miss ${missed ? "missed" : ""}" type="button" data-action="missed" aria-label="${missedLabel}" ${canMark ? "" : "disabled"}>
-            <span aria-hidden="true">×</span>
-          </button>
-        `}
-      </div>
-      <div class="habit-title">
-        <div class="habit-name-row">
-          <h3>${escapeText(habit.name)}</h3>
-          ${habit.isBonus ? '<span class="bonus-label">בונוס</span>' : ""}
-        </div>
-        <p>${habit.time} · ${daysText}${note}</p>
-      </div>
-      <div class="habit-meta">
-        <span class="streak">${habit.trackingMode === "percentage" ? `${formatPercent(stats.successPercent)}% הצלחה` : `${stats.currentStreak} ימים`}</span>
-        <button class="text-link" type="button">עריכה</button>
-        <button class="text-link" type="button" data-action="stats">סטטיסטיקה</button>
-      </div>
-    `;
-
-    card.querySelector('[data-action="done"]').addEventListener("click", () => setHabitStatus(habit.id, "done", listDate));
-    card.querySelector('[data-action="missed"]')?.addEventListener("click", () => setHabitStatus(habit.id, "missed", listDate));
-    card.querySelector(".text-link").addEventListener("click", () => openHabitDialog(habit.id));
-    card.querySelector('[data-action="stats"]').addEventListener("click", () => openStatsDialog(habit.id));
-
-    if (!options.todayOnly || isHabitDue(habit, listDate)) {
-      container.appendChild(card);
-    }
-  });
-}
-
-function renderInsights(today) {
-  const weekDates = Array.from({ length: 7 }, (_, index) => addDays(today, -index));
-  const dueInWeek = weekDates.flatMap((day) => habits.filter((habit) => isHabitDue(habit, day)).map((habit) => [habit, day]));
-  const doneInWeek = dueInWeek.filter(([habit, day]) => getRecordStatus(habit, dateKey(day)) === "done").length;
-  const weekPercent = dueInWeek.length ? Math.round((doneInWeek / dueInWeek.length) * 100) : 0;
-  const streakHabits = habits.filter((habit) => habit.trackingMode !== "percentage");
-  const bestHabit = [...streakHabits].sort((a, b) => getHabitStats(b).currentStreak - getHabitStats(a).currentStreak)[0];
-  const totalDone = habits.reduce((sum, habit) => sum + countRecords(habit, "done"), 0);
-  const activeDays = new Set(
-    habits.flatMap((habit) => Object.entries(habit.records).filter(([, record]) => isDoneRecord(record)).map(([key]) => key)),
-  ).size;
-
-  els.statsGrid.innerHTML = `
-    <div class="stat-card"><strong>${weekPercent}%</strong><span>השלמה בשבעת הימים האחרונים</span></div>
-    <div class="stat-card"><strong>${bestHabit ? getHabitStats(bestHabit).currentStreak : 0}</strong><span>הרצף הארוך הפעיל ביותר</span></div>
-    <div class="stat-card"><strong>${totalDone}</strong><span>סימונים שבוצעו בסך הכל</span></div>
-    <div class="stat-card"><strong>${activeDays}</strong><span>ימים עם התקדמות</span></div>
-  `;
-
-  renderMonth(today);
-}
-
-function renderMonth(today) {
-  const monthName = new Intl.DateTimeFormat("he-IL", { month: "long", year: "numeric" }).format(today);
-  els.monthTitle.textContent = monthName;
-  els.monthGrid.innerHTML = "";
-
-  const first = new Date(today.getFullYear(), today.getMonth(), 1);
-  const last = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-  for (let blank = 0; blank < first.getDay(); blank += 1) {
-    els.monthGrid.appendChild(document.createElement("span"));
-  }
-
-  for (let dayNumber = 1; dayNumber <= last.getDate(); dayNumber += 1) {
-    const day = new Date(today.getFullYear(), today.getMonth(), dayNumber);
-    const key = dateKey(day);
-    const hasProgress = habits.some((habit) => getRecordStatus(habit, key) === "done");
-    const cell = document.createElement("div");
-    cell.className = "calendar-day";
-    cell.classList.toggle("has-progress", hasProgress);
-    cell.classList.toggle("today", key === dateKey(today));
-    cell.textContent = dayNumber;
-    els.monthGrid.appendChild(cell);
-  }
-}
-
-function setHabitStatus(id, nextStatus, date = selectedDate) {
-  const habit = habits.find((item) => item.id === id);
-  if (!habit) return;
-  const targetDate = startOfDay(date);
-  if (!isHabitDue(habit, targetDate) || isFutureDate(targetDate)) return;
-  const key = dateKey(targetDate);
-  const currentStatus = getRecordStatus(habit, key);
-  if (currentStatus === nextStatus) {
-    delete habit.records[key];
-  } else {
-    habit.records[key] = nextStatus === "done" ? true : "missed";
-  }
-  touchLocalData();
-  render();
-  scheduleCloudUpload();
-}
-
-function setSelectedDate(date) {
-  selectedDate = clampDateToTrackerRange(date);
-  render();
-}
-
-function openStatsDialog(id) {
-  const habit = habits.find((item) => item.id === id);
-  if (!habit) return;
-  statsHabitId = habit.id;
-  statsCalendarMonth = startOfMonth(new Date());
-  const stats = getHabitStats(habit);
-  els.statsHabitName.textContent = habit.name;
-  if (habit.trackingMode === "percentage") {
-    els.habitStatsGrid.innerHTML = `
-      <div class="stat-card"><strong>${formatPercent(stats.successPercent)}%</strong><span>אחוז הצלחה כולל</span></div>
-      <div class="stat-card"><strong>${formatPercent(stats.last30Percent)}%</strong><span>הצלחה ב־30 ימים</span></div>
-      <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
-      <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
-      <div class="stat-card"><strong>${stats.markedCount}</strong><span>ימים בחישוב</span></div>
-      <div class="stat-card"><strong>${habit.isBonus ? "בונוס" : habit.countsTowardScore ? "כן" : "לא"}</strong><span>נכלל בניקוד</span></div>
-    `;
-    els.goalList.innerHTML = GOAL_DAYS.map((period) => {
-      const percent = getSuccessPercentForPeriod(habit, period);
-      return `
-        <div class="goal-row ${percent === 100 ? "reached" : ""}">
-          <div>
-            <strong>${period} ימים אחרונים</strong>
-            <span>${formatPercent(percent)}% הצלחה</span>
-          </div>
-          <div class="goal-bar" aria-label="${formatPercent(percent)}% הצלחה ב־${period} ימים אחרונים">
-            <span style="width:${percent}%"></span>
-          </div>
-        </div>
-      `;
-    }).join("");
-  } else {
-    els.habitStatsGrid.innerHTML = `
-      <div class="stat-card"><strong>${stats.currentStreak}</strong><span>רצף נוכחי</span></div>
-      <div class="stat-card"><strong>${stats.bestStreak}</strong><span>רצף שיא</span></div>
-      <div class="stat-card"><strong>${formatPercent(stats.last30Percent)}%</strong><span>הצלחה ב־30 ימים</span></div>
-      <div class="stat-card"><strong>${stats.doneCount}</strong><span>סך הצלחות</span></div>
-      <div class="stat-card"><strong>${stats.missedCount}</strong><span>סימוני X</span></div>
-      <div class="stat-card"><strong>${stats.activeDays}</strong><span>ימים פעילים</span></div>
-    `;
-    els.goalList.innerHTML = GOAL_DAYS.map((goal) => {
-      const progress = Math.min(stats.currentStreak, goal);
-      const percent = Math.round((progress / goal) * 100);
-      const reached = stats.currentStreak >= goal;
-      return `
-        <div class="goal-row ${reached ? "reached" : ""}">
-          <div>
-            <strong>${goal} ימים ברצף</strong>
-            <span>${reached ? "הושג" : `${progress} מתוך ${goal}`}</span>
-          </div>
-          <div class="goal-bar" aria-label="התקדמות ליעד ${goal} ימים">
-            <span style="width:${percent}%"></span>
-          </div>
-        </div>
-      `;
-    }).join("");
-  }
-  renderHabitCalendar();
-  els.statsDialog.showModal();
-}
-
-function changeStatsCalendarMonth(amount) {
-  const habit = habits.find((item) => item.id === statsHabitId);
-  if (!habit) return;
-  const firstMonth = startOfMonth(getHabitStartDate(habit));
-  const currentMonth = startOfMonth(new Date());
-  const requestedMonth = addMonths(statsCalendarMonth, amount);
-  if (requestedMonth < firstMonth || requestedMonth > currentMonth) return;
-  statsCalendarMonth = requestedMonth;
-  renderHabitCalendar();
-}
-
-function renderHabitCalendar() {
-  const habit = habits.find((item) => item.id === statsHabitId);
-  if (!habit) return;
-
-  const monthStart = startOfMonth(statsCalendarMonth);
-  const habitStart = startOfDay(getHabitStartDate(habit));
-  const firstMonth = startOfMonth(habitStart);
-  const today = startOfDay(new Date());
-  const currentMonth = startOfMonth(today);
-  const daysInMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
-  const monthName = new Intl.DateTimeFormat("he-IL", { month: "long", year: "numeric" }).format(monthStart);
-
-  els.habitCalendarTitle.textContent = monthName;
-  els.habitCalendarWeekdays.innerHTML = dayLabels.map((label) => `<span>${label}</span>`).join("");
-  els.statsPrevMonth.disabled = monthStart <= firstMonth;
-  els.statsNextMonth.disabled = monthStart >= currentMonth;
-
-  const cells = [];
-  for (let index = 0; index < monthStart.getDay(); index += 1) {
-    cells.push('<span class="habit-calendar-day outside" aria-hidden="true"></span>');
-  }
-
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
-    const key = dateKey(date);
-    const recordStatus = getRecordStatus(habit, key);
-    let status = "unmarked";
-    let marker = "–";
-    let statusLabel = "לא סומן";
-
-    if (date < habitStart) {
-      status = "unavailable";
-      marker = "";
-      statusLabel = "לפני תחילת ההרגל";
-    } else if (date > today) {
-      status = "unavailable";
-      marker = "";
-      statusLabel = "יום עתידי";
-    } else if (!isHabitDue(habit, date)) {
-      status = "not-due";
-      marker = "";
-      statusLabel = "ההרגל לא מתוכנן ליום זה";
-    } else if (recordStatus === "done") {
-      status = "done";
-      marker = "✓";
-      statusLabel = "הצלחה";
-    } else if (recordStatus === "missed") {
-      status = "missed";
-      marker = "×";
-      statusLabel = "כישלון";
-    }
-
-    const todayClass = isSameDate(date, today) ? " today" : "";
-    const ariaLabel = `${formatFullDate(date)}, ${statusLabel}`;
-    cells.push(`
-      <span class="habit-calendar-day ${status}${todayClass}" aria-label="${ariaLabel}">
-        <b>${day}</b>
-        <small aria-hidden="true">${marker}</small>
-      </span>
-    `);
-  }
-
-  els.habitCalendarGrid.innerHTML = cells.join("");
-}
-
-function openHabitDialog(id = null) {
-  const habit = habits.find((item) => item.id === id);
-  els.form.reset();
-  els.habitId.value = habit?.id ?? "";
-  els.dialogMode.textContent = habit ? "עריכת הרגל" : "הרגל חדש";
-  els.deleteHabit.hidden = !habit;
-  selectedDays = habit ? [...habit.days] : [0, 1, 2, 3, 4, 5, 6];
-  selectedColor = habit?.color ?? colorOptions[0];
-  els.habitName.value = habit?.name ?? "";
-  els.habitTime.value = habit?.time ?? "בוקר";
-  els.habitNote.value = habit?.note ?? "";
-  const trackingMode = habit?.trackingMode ?? "streak";
-  els.habitTrackingModes.forEach((input) => {
-    input.checked = input.value === trackingMode;
-  });
-  const habitType = habit?.isBonus ? "bonus" : "regular";
-  els.habitTypes.forEach((input) => {
-    input.checked = input.value === habitType;
-  });
-  els.habitCountsTowardScore.checked = habit?.countsTowardScore ?? true;
-  syncHabitTypeControls();
-  syncPickers();
-  els.dialog.showModal();
-  els.habitName.focus();
-}
-
-function syncPickers() {
-  els.dayPicker.querySelectorAll("button").forEach((button) => {
-    button.classList.toggle("active", selectedDays.includes(Number(button.dataset.day)));
-  });
-
-  els.colorPicker.querySelectorAll("button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.color === selectedColor);
-  });
-}
-
-function syncHabitTypeControls() {
-  const isBonus = [...els.habitTypes].some((input) => input.checked && input.value === "bonus");
-  if (isBonus) els.habitCountsTowardScore.checked = true;
-  els.habitCountsTowardScore.disabled = isBonus;
-}
-
-function handleSave(event) {
-  event.preventDefault();
-  const id = els.habitId.value || crypto.randomUUID();
-  const existing = habits.find((habit) => habit.id === id);
-  const isBonus = [...els.habitTypes].some((input) => input.checked && input.value === "bonus");
-  const nextHabit = {
-    id,
-    name: els.habitName.value.trim(),
-    time: els.habitTime.value,
-    note: els.habitNote.value.trim(),
-    days: selectedDays,
-    color: selectedColor,
-    trackingMode: [...els.habitTrackingModes].find((input) => input.checked)?.value ?? "streak",
-    isBonus,
-    countsTowardScore: isBonus ? true : els.habitCountsTowardScore.checked,
-    records: existing?.records ?? {},
-    createdAt: existing?.createdAt ?? new Date().toISOString(),
-  };
-
-  habits = existing ? habits.map((habit) => (habit.id === id ? nextHabit : habit)) : [nextHabit, ...habits];
-  els.dialog.close();
-  touchLocalData();
-  render();
-  scheduleCloudUpload();
-}
-
-function handleDelete() {
-  const id = els.habitId.value;
-  if (!id) return;
-  habits = habits.filter((habit) => habit.id !== id);
-  els.dialog.close();
-  touchLocalData();
-  render();
-  scheduleCloudUpload();
-}
-
-function initializeGoogleCloud() {
-  const firebase = window.retzefFirebase;
-  if (!firebase) {
-    window.addEventListener("retzef-firebase-ready", initializeGoogleCloud, { once: true });
-    return;
-  }
-
-  googleCloudReady = firebase.configured;
-  if (!firebase.configured) {
-    setGoogleCloudStatus("החיבור ל־Google עדיין לא הושלם.", "error");
-    updateGoogleCloudPanel();
-    return;
-  }
-
-  firebase.onUserChanged((user) => {
-    googleUser = user;
-    updateGoogleCloudPanel();
-    if (user && !googleBusy) {
-      reconcileGoogleCloud({ manual: false });
-    } else if (!user && !googleBusy) {
-      setGoogleCloudStatus("לא מחובר. אפשר להתחבר עם חשבון Google כדי לסנכרן בין המכשירים.", "idle");
-    }
-  });
-}
-
-async function handleConnectGoogle() {
-  const firebase = window.retzefFirebase;
-  if (!firebase?.configured || googleBusy) return;
-
-  setGoogleBusy(true);
-  setGoogleCloudStatus("פותח התחברות מאובטחת של Google...", "idle");
-  try {
-    googleUser = await firebase.signIn();
-    updateGoogleCloudPanel();
-  } catch (error) {
-    setGoogleCloudStatus(`ההתחברות נכשלה: ${friendlyFirebaseError(error)}`, "error");
-    return;
-  } finally {
-    setGoogleBusy(false);
-  }
-
-  await reconcileGoogleCloud({ manual: false });
-}
-
-async function handleDisconnectGoogle() {
-  const firebase = window.retzefFirebase;
-  if (!firebase || googleBusy) return;
-  setGoogleBusy(true);
-  try {
-    await firebase.signOut();
-    googleUser = null;
-    setGoogleCloudStatus("התנתקת מ־Google. הנתונים נשארו שמורים במכשיר.", "idle");
-  } catch (error) {
-    setGoogleCloudStatus(`ההתנתקות נכשלה: ${friendlyFirebaseError(error)}`, "error");
-  } finally {
-    setGoogleBusy(false);
-    updateGoogleCloudPanel();
-  }
-}
-
-async function reconcileGoogleCloud({ manual }) {
-  const firebase = window.retzefFirebase;
-  if (!firebase?.configured || !googleUser || googleBusy) return;
-
-  setGoogleBusy(true);
-  setGoogleCloudStatus("מסנכרן עם Google...", "idle");
-  try {
-    const remote = await firebase.download();
-    const localUpdatedAt = localStorage.getItem(LOCAL_UPDATED_KEY);
-
-    if (!remote) {
-      const payload = createCloudPayload();
-      await firebase.upload(payload);
-      setGoogleCloudStatus("הנתונים נשמרו ב־Google.", "ok");
-      return;
-    }
-
-    if (!Array.isArray(remote.habits)) throw new Error("נתוני הענן אינם תקינים.");
-
-    const remoteTime = Date.parse(remote.updatedAt ?? "") || 0;
-    const localTime = Date.parse(localUpdatedAt ?? "") || 0;
-
-    if (remoteTime > localTime) {
-      applyCloudPayload(remote);
-      setGoogleCloudStatus("הנתונים העדכניים נטענו מ־Google.", "ok");
-    } else if (localTime > remoteTime) {
-      await firebase.upload(createCloudPayload());
-      setGoogleCloudStatus("השינויים נשמרו ב־Google.", "ok");
-    } else {
-      setGoogleCloudStatus(manual ? "הכול מעודכן בכל המכשירים." : "מחובר ומסונכרן עם Google.", "ok");
-    }
-  } catch (error) {
-    setGoogleCloudStatus(`הסנכרון נכשל: ${friendlyFirebaseError(error)}`, "error");
-  } finally {
-    setGoogleBusy(false);
-    updateGoogleCloudPanel();
-  }
-}
-
-async function uploadGoogleData({ manual }) {
-  const firebase = window.retzefFirebase;
-  if (!firebase?.configured || !googleUser || googleBusy) return;
-
-  setGoogleBusy(true);
-  if (manual) setGoogleCloudStatus("שומר ב־Google...", "idle");
-  try {
-    await firebase.upload(createCloudPayload());
-    setGoogleCloudStatus(manual ? "נשמר ב־Google בהצלחה." : "סונכרן עם Google.", "ok");
-  } catch (error) {
-    setGoogleCloudStatus(`השמירה ב־Google נכשלה: ${friendlyFirebaseError(error)}`, "error");
-  } finally {
-    setGoogleBusy(false);
-    updateGoogleCloudPanel();
-  }
-}
-
-function createCloudPayload() {
-  const updatedAt = localStorage.getItem(LOCAL_UPDATED_KEY) || new Date().toISOString();
-  localStorage.setItem(LOCAL_UPDATED_KEY, updatedAt);
-  return {
-    app: "retzef",
-    version: 4,
-    updatedAt,
-    habits,
-    reading: readingData,
-  };
-}
-
-function applyCloudPayload(payload) {
-  const normalizedHabits = normalizeHabits(payload.habits);
-  const migrated = JSON.stringify(normalizedHabits) !== JSON.stringify(payload.habits);
-  habits = normalizedHabits;
-  applyReadingPayload(payload.reading);
-  localStorage.setItem(LOCAL_UPDATED_KEY, migrated ? new Date().toISOString() : payload.updatedAt || new Date().toISOString());
-  saveHabits();
-  saveReadingData();
-  render();
-  if (migrated) scheduleCloudUpload();
-}
-
-function applyReadingPayload(reading) {
-  if (!Array.isArray(reading?.books)) return;
-  readingData = {
-    startedAt: reading.startedAt ?? null,
+  return { totalPages, elapsedDays, todayPages, score: totalPages - elapsedDays * DAILY_READING_GOAL };…6267 tokens truncated…rtedAt: reading.startedAt ?? null,
     books: reading.books.map(normalizeBook),
   };
 }
 
 function touchLocalData() {
   localStorage.setItem(LOCAL_UPDATED_KEY, new Date().toISOString());
+}
+
+async function syncScreenTimeBonus() {
+  if (screenTimeSyncPromise) return screenTimeSyncPromise;
+  screenTimeSyncPromise = performScreenTimeSync();
+
+  try {
+    return await screenTimeSyncPromise;
+  } finally {
+    screenTimeSyncPromise = null;
+  }
+}
+
+async function performScreenTimeSync() {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const response = await fetch(SCREEN_TIME_ENDPOINT, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Screen Time sync failed (${response.status})`);
+
+    const payload = await response.json();
+    if (!payload?.ok || Number(payload.thresholdHours) !== 3) {
+      throw new Error(payload?.error || "Screen Time response is invalid");
+    }
+
+    const todayKey = dateKey(new Date());
+    const isValidPastDate = (key) => /^\d{4}-\d{2}-\d{2}$/.test(key) && key <= todayKey;
+    const measuredDates = [...new Set((payload.measuredDates ?? []).map(String).filter(isValidPastDate))].sort();
+    const successDates = [...new Set((payload.successDates ?? []).map(String).filter(isValidPastDate))].sort();
+    const successSet = new Set(successDates);
+    const existingIndex = habits.findIndex((habit) =>
+      habit.id === SCREEN_TIME_HABIT_ID
+      || habit.automation?.type === SCREEN_TIME_AUTOMATION_TYPE
+      || habit.name === SCREEN_TIME_HABIT_NAME,
+    );
+    const existing = existingIndex >= 0 ? habits[existingIndex] : null;
+    const records = { ...(existing?.records ?? {}) };
+    const previouslySynced = Array.isArray(existing?.automation?.syncedSuccessDates)
+      ? existing.automation.syncedSuccessDates.map(String)
+      : [];
+
+    previouslySynced.forEach((key) => {
+      if (!successSet.has(key) && isDoneRecord(records[key])) delete records[key];
+    });
+    successDates.forEach((key) => {
+      records[key] = "done";
+    });
+
+    const firstMeasuredDate = measuredDates[0] || todayKey;
+    const nextHabit = normalizeHabit({
+      ...(existing ?? {}),
+      id: existing?.id || SCREEN_TIME_HABIT_ID,
+      name: existing?.name || SCREEN_TIME_HABIT_NAME,
+      time: existing?.time || "גמיש",
+      note: existing?.note || "מתעדכן אוטומטית מ־Screen Time",
+      days: existing?.days || [0, 1, 2, 3, 4, 5, 6],
+      color: existing?.color || "#d7a528",
+      trackingMode: "percentage",
+      isBonus: true,
+      countsTowardScore: true,
+      records,
+      createdAt: existing?.createdAt || `${firstMeasuredDate}T00:00:00`,
+      automation: {
+        type: SCREEN_TIME_AUTOMATION_TYPE,
+        thresholdHours: 3,
+        sourceFileId: "1aWX3cTO9io576eCRU9DysCW50IX7ivfM",
+        sourceUpdatedAt: String(payload.sourceUpdatedAt || ""),
+        syncedSuccessDates: successDates,
+      },
+    });
+
+    if (existing && JSON.stringify(nextHabit) === JSON.stringify(existing)) return false;
+    if (existingIndex >= 0) habits = habits.map((habit, index) => (index === existingIndex ? nextHabit : habit));
+    else habits = [nextHabit, ...habits];
+
+    touchLocalData();
+    render();
+    scheduleCloudUpload();
+    return true;
+  } catch (error) {
+    console.warn("Screen Time sync unavailable", error);
+    return false;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function updateGoogleCloudPanel() {
@@ -1579,7 +1042,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=29")
+      .register("sw.js?v=30")
       .then((registration) => registration.update())
       .catch(() => {});
   }
