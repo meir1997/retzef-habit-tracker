@@ -1696,7 +1696,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=33")
+      .register("sw.js?v=34")
       .then((registration) => registration.update())
       .catch(() => {});
   }
