@@ -36,6 +36,12 @@ async function signIn() {
   if (!configured) throw new Error("Firebase עדיין לא מוגדר.");
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIos) {
+    await signInWithRedirect(auth, provider);
+    return null;
+  }
   try {
     const result = await signInWithPopup(auth, provider);
     return result.user;
