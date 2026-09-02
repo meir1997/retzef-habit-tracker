@@ -60,7 +60,31 @@ async function signOutUser() {
 async function upload(payload) {
   const user = currentUser ?? auth?.currentUser;
   if (!user) throw new Error("צריך להתחבר עם Google.");
-  await setDoc(doc(database, "users", user.uid, "data", "retzef"), payload);
+  const reference = doc(database, "users", user.uid, "data", "retzef");
+  const existing = await getDoc(reference);
+  const current = existing.exists() ? existing.data() : null;
+  const snapshot = compactPayload(current);
+  const history = [snapshot, ...(Array.isArray(current?.backups) ? current.backups.map(compactPayload) : [])]
+    .filter(Boolean);
+  const fingerprints = new Set();
+  const backups = history.filter((item) => {
+    const fingerprint = `${item.updatedAt}|${JSON.stringify(item.habits)}|${JSON.stringify(item.reading)}`;
+    if (fingerprints.has(fingerprint)) return false;
+    fingerprints.add(fingerprint);
+    return true;
+  }).slice(0, 12);
+  await setDoc(reference, { ...compactPayload(payload), backups });
+}
+
+function compactPayload(payload) {
+  if (!payload || !Array.isArray(payload.habits)) return null;
+  return {
+    app: payload.app || "retzef",
+    version: payload.version || 1,
+    updatedAt: payload.updatedAt || new Date().toISOString(),
+    habits: payload.habits,
+    reading: payload.reading || { startedAt: null, books: [] },
+  };
 }
 
 async function download() {
