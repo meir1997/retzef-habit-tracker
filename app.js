@@ -4,6 +4,8 @@ const CLOUD_TOKEN_KEY = "retzef-github-token-v1";
 const CLOUD_GIST_KEY = "retzef-github-gist-id-v1";
 const CLOUD_FILE_NAME = "retzef-habit-data.json";
 const LOCAL_UPDATED_KEY = "retzef-local-updated-at-v1";
+const LOCAL_BACKUPS_KEY = "retzef-local-backups-v1";
+const RECOVERY_ARTIFACT = "recovery-v1.json";
 const SCREEN_TIME_ENDPOINT = "https://script.google.com/macros/s/AKfycbyLZh6huB1jR-sB52F5gf-vuo8ozelARbpC2wQPo2jLj-aicdiAb2z7zKC5vz7b2Rp9Qw/exec";
 const SCREEN_TIME_HABIT_ID = "screen-time-under-3-hours-v1";
 const SCREEN_TIME_AUTOMATION_TYPE = "screen-time-under-hours";
@@ -105,6 +107,7 @@ let googleTimer = null;
 let googleBusy = false;
 let googleUser = null;
 let googleCloudReady = false;
+let googleCloudHydrated = false;
 let dayRefreshTimer = null;
 let statsHabitId = null;
 let statsCalendarMonth = startOfMonth(new Date());
@@ -114,7 +117,7 @@ function start() {
   buildPickers();
   bindEvents();
   render();
-  syncScreenTimeBonus();
+  restoreFromRecoveryLink().finally(() => syncScreenTimeBonus());
   initializeGoogleCloud();
   scheduleNextDayRefresh();
   registerServiceWorker();
@@ -1022,35 +1025,41 @@ async function reconcileGoogleCloud({ manual }) {
   setGoogleCloudStatus("מסנכרן עם Google...", "idle");
   try {
     const remote = await firebase.download();
-    const localUpdatedAt = localStorage.getItem(LOCAL_UPDATED_KEY);
 
     if (!remote) {
-      const payload = createCloudPayload();
-      await firebase.upload(payload);
-      setGoogleCloudStatus("הנתונים נשמרו ב־Google.", "ok");
+      googleCloudHydrated = true;
+      await firebase.upload(createCloudPayload());
+      setGoogleCloudStatus("נוצר גיבוי ראשון ב־Google.", "ok");
       return;
     }
 
     if (!Array.isArray(remote.habits)) throw new Error("נתוני הענן אינם תקינים.");
 
-    if (isStarterOnlyHabitData(habits)) {
-      applyCloudPayload(remote);
-      setGoogleCloudStatus("ההרגלים שלך שוחזרו מ־Google.", "ok");
+    const preferredRemote = selectPreferredCloudPayload(remote);
+    const localIsStarter = isStarterOnlyHabitData(habits);
+
+    if (localIsStarter || isPayloadMoreComplete(preferredRemote, createCloudPayload())) {
+      applyCloudPayload(preferredRemote);
+      googleCloudHydrated = true;
+      setGoogleCloudStatus(
+        preferredRemote === remote ? "ההרגלים שלך נטענו מ־Google." : "נמצאה גרסת גיבוי מלאה יותר והיא שוחזרה מ־Google.",
+        "ok",
+      );
       return;
     }
 
-    const remoteTime = Date.parse(remote.updatedAt ?? "") || 0;
-    const localTime = Date.parse(localUpdatedAt ?? "") || 0;
-
-    if (remoteTime > localTime) {
-      applyCloudPayload(remote);
-      setGoogleCloudStatus("הנתונים העדכניים נטענו מ־Google.", "ok");
-    } else if (localTime > remoteTime) {
+    googleCloudHydrated = true;
+    if (isPayloadMoreComplete(createCloudPayload(), preferredRemote)) {
       await firebase.upload(createCloudPayload());
-      setGoogleCloudStatus("השינויים נשמרו ב־Google.", "ok");
-    } else {
-      setGoogleCloudStatus(manual ? "הכול מעודכן בכל המכשירים." : "מחובר ומסונכרן עם Google.", "ok");
+      setGoogleCloudStatus("הנתונים המלאים יותר מהמכשיר נשמרו ב־Google.", "ok");
+      return;
     }
+    setGoogleCloudStatus(
+      manual
+        ? "הנתונים במכשיר נשמרו. סנכרון ידני אינו מוחק גרסה עשירה יותר בענן."
+        : "מחובר ל־Google. שינויים חדשים יישמרו אוטומטית.",
+      "ok",
+    );
   } catch (error) {
     setGoogleCloudStatus(`הסנכרון נכשל: ${friendlyFirebaseError(error)}`, "error");
   } finally {
@@ -1062,7 +1071,7 @@ async function reconcileGoogleCloud({ manual }) {
 
 async function uploadGoogleData({ manual }) {
   const firebase = window.retzefFirebase;
-  if (!firebase?.configured || !googleUser || googleBusy) return;
+  if (!firebase?.configured || !googleUser || googleBusy || !googleCloudHydrated) return;
 
   setGoogleBusy(true);
   if (manual) setGoogleCloudStatus("שומר ב־Google...", "idle");
@@ -1082,7 +1091,7 @@ function createCloudPayload() {
   localStorage.setItem(LOCAL_UPDATED_KEY, updatedAt);
   return {
     app: "retzef",
-    version: 4,
+    version: 5,
     updatedAt,
     habits,
     reading: readingData,
@@ -1090,6 +1099,7 @@ function createCloudPayload() {
 }
 
 function applyCloudPayload(payload) {
+  saveLocalBackup();
   const normalizedHabits = normalizeHabits(payload.habits);
   const migrated = JSON.stringify(normalizedHabits) !== JSON.stringify(payload.habits);
   habits = normalizedHabits;
@@ -1116,8 +1126,112 @@ function isStarterOnlyHabitData(items) {
     && manualHabits.every((habit) => starterNames.has(habit.name) && Object.keys(habit.records ?? {}).length === 0);
 }
 
+function isStarterHabit(habit) {
+  return ["שתיית מים", "הליכה קצרה", "קריאה"].includes(habit.name)
+    && Object.keys(habit.records ?? {}).length === 0;
+}
+
+function getCloudCandidates(payload) {
+  return [payload, ...(Array.isArray(payload?.backups) ? payload.backups : [])]
+    .filter((candidate) => Array.isArray(candidate?.habits));
+}
+
+function getPayloadRichness(payload) {
+  const normalized = normalizeHabits(payload?.habits ?? []);
+  const manualHabits = normalized.filter((habit) => habit.automation?.type !== SCREEN_TIME_AUTOMATION_TYPE);
+  const starterNames = new Set(["שתיית מים", "הליכה קצרה", "קריאה"]);
+  const customHabitCount = manualHabits.filter((habit) => !starterNames.has(habit.name)).length;
+  const recordCount = manualHabits.reduce((total, habit) => total + Object.keys(habit.records ?? {}).length, 0);
+  return (customHabitCount * 100000) + (recordCount * 10) + manualHabits.length;
+}
+
+function selectPreferredCloudPayload(payload) {
+  return getCloudCandidates(payload).sort((left, right) => {
+    const richness = getPayloadRichness(right) - getPayloadRichness(left);
+    if (richness) return richness;
+    return (Date.parse(right.updatedAt ?? "") || 0) - (Date.parse(left.updatedAt ?? "") || 0);
+  })[0] ?? payload;
+}
+
+function isPayloadMoreComplete(left, right) {
+  return getPayloadRichness(left) > getPayloadRichness(right);
+}
+
+function saveLocalBackup() {
+  const savedHabits = localStorage.getItem(STORAGE_KEY);
+  if (!savedHabits) return;
+
+  try {
+    const habitsSnapshot = JSON.parse(savedHabits);
+    if (!Array.isArray(habitsSnapshot)) return;
+    const readingSnapshot = JSON.parse(localStorage.getItem(READING_STORAGE_KEY) || '{"startedAt":null,"books":[]}');
+    const signature = JSON.stringify({ habits: habitsSnapshot, reading: readingSnapshot });
+    const existing = JSON.parse(localStorage.getItem(LOCAL_BACKUPS_KEY) || "[]");
+    if (existing[0]?.signature === signature) return;
+
+    const backups = [{
+      updatedAt: localStorage.getItem(LOCAL_UPDATED_KEY) || new Date().toISOString(),
+      habits: habitsSnapshot,
+      reading: readingSnapshot,
+      signature,
+    }, ...existing].slice(0, 15);
+    localStorage.setItem(LOCAL_BACKUPS_KEY, JSON.stringify(backups));
+  } catch {
+    // A damaged local value should never block the app or cloud recovery.
+  }
+}
+
 function touchLocalData() {
+  saveLocalBackup();
   localStorage.setItem(LOCAL_UPDATED_KEY, new Date().toISOString());
+}
+
+function decodeBase64Url(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
+
+async function restoreFromRecoveryLink() {
+  const recoveryKey = new URLSearchParams(window.location.hash.slice(1)).get("recovery");
+  if (!recoveryKey || !window.crypto?.subtle) return false;
+
+  try {
+    const response = await fetch(`${RECOVERY_ARTIFACT}?v=1`, { cache: "no-store" });
+    if (!response.ok) throw new Error("לא נמצא קובץ שחזור.");
+    const envelope = await response.json();
+    const key = await crypto.subtle.importKey("raw", decodeBase64Url(recoveryKey), { name: "AES-GCM" }, false, ["decrypt"]);
+    const bytes = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: decodeBase64Url(envelope.iv) },
+      key,
+      decodeBase64Url(envelope.ciphertext),
+    );
+    const payload = JSON.parse(new TextDecoder().decode(bytes));
+    if (payload?.app !== "retzef-recovery" || !Array.isArray(payload.habits)) throw new Error("תוכן השחזור אינו תקין.");
+
+    const recoveredHabits = normalizeHabits(payload.habits);
+    const recoveredNames = new Set(recoveredHabits.map((habit) => habit.name));
+    const retainedHabits = habits.filter((habit) => (
+      habit.automation?.type === SCREEN_TIME_AUTOMATION_TYPE
+      || (!isStarterHabit(habit) && !recoveredNames.has(habit.name))
+    ));
+
+    saveLocalBackup();
+    habits = normalizeHabits([...recoveredHabits, ...retainedHabits]);
+    if (Array.isArray(payload.reading?.books)) applyReadingPayload(payload.reading);
+    touchLocalData();
+    saveHabits();
+    saveReadingData();
+    render();
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    setGoogleCloudStatus("הגיבוי שוחזר למכשיר הזה. הוא יישמר גם בענן לאחר החיבור.", "ok");
+    scheduleCloudUpload();
+    return true;
+  } catch (error) {
+    console.warn("Recovery link failed", error);
+    setGoogleCloudStatus("קישור השחזור לא נקרא. נסה לפתוח אותו שוב.", "error");
+    return false;
+  }
 }
 
 async function syncScreenTimeBonus() {
