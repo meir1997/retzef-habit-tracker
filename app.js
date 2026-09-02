@@ -1810,7 +1810,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=35")
+      .register("sw.js?v=36")
       .then((registration) => registration.update())
       .catch(() => {});
   }
