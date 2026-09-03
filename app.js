@@ -37,6 +37,7 @@ const els = {
   googleEmail: document.querySelector("#googleEmail"),
   connectGoogle: document.querySelector("#connectGoogle"),
   syncGoogle: document.querySelector("#syncGoogle"),
+  restoreBackup: document.querySelector("#restoreBackup"),
   disconnectGoogle: document.querySelector("#disconnectGoogle"),
   googleCloudStatus: document.querySelector("#googleCloudStatus"),
   githubToken: document.querySelector("#githubToken"),
@@ -296,6 +297,7 @@ function bindEvents() {
   els.deleteHabit.addEventListener("click", handleDelete);
   els.connectGoogle.addEventListener("click", handleConnectGoogle);
   els.syncGoogle.addEventListener("click", () => reconcileGoogleCloud({ manual: true }));
+  els.restoreBackup.addEventListener("click", handleRestoreBackup);
   els.disconnectGoogle.addEventListener("click", handleDisconnectGoogle);
   els.saveGithubToken.addEventListener("click", handleSaveGithubToken);
   els.uploadCloud.addEventListener("click", () => uploadCloudData({ manual: true }));
@@ -1198,6 +1200,33 @@ function decodeBase64Url(value) {
 async function restoreFromRecoveryLink() {
   const recoveryKey = new URLSearchParams(window.location.hash.slice(1)).get("recovery");
   if (!recoveryKey || !window.crypto?.subtle) return false;
+  return restoreFromRecoveryKey(recoveryKey, { clearUrl: true });
+}
+
+function recoveryKeyFromInput(value) {
+  const input = String(value || "").trim();
+  if (!input) return "";
+  const match = input.match(/[?#&]recovery=([^&#\s]+)/);
+  return decodeURIComponent(match?.[1] || input).trim();
+}
+
+async function handleRestoreBackup() {
+  let recoveryKey = "";
+  try {
+    recoveryKey = recoveryKeyFromInput(await navigator.clipboard?.readText());
+  } catch {
+    // Clipboard access is not available in every installed web app.
+  }
+
+  if (!recoveryKey) {
+    recoveryKey = recoveryKeyFromInput(window.prompt("הדבק את קישור השחזור או את קוד השחזור:"));
+  }
+  if (!recoveryKey) return;
+  await restoreFromRecoveryKey(recoveryKey, { clearUrl: false });
+}
+
+async function restoreFromRecoveryKey(recoveryKey, { clearUrl }) {
+  if (!window.crypto?.subtle) return false;
 
   try {
     const response = await fetch(`${RECOVERY_ARTIFACT}?v=1`, { cache: "no-store" });
@@ -1226,13 +1255,13 @@ async function restoreFromRecoveryLink() {
     saveHabits();
     saveReadingData();
     render();
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    if (clearUrl) window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     setGoogleCloudStatus("הגיבוי שוחזר למכשיר הזה. הוא יישמר גם בענן לאחר החיבור.", "ok");
     scheduleCloudUpload();
     return true;
   } catch (error) {
     console.warn("Recovery link failed", error);
-    setGoogleCloudStatus("קישור השחזור לא נקרא. נסה לפתוח אותו שוב.", "error");
+    setGoogleCloudStatus("קוד השחזור לא נקרא. נסה להדביק את הקישור המלא שוב.", "error");
     return false;
   }
 }
@@ -1331,9 +1360,11 @@ function updateGoogleCloudPanel() {
   els.googleAccount.hidden = !connected;
   els.connectGoogle.hidden = connected;
   els.syncGoogle.hidden = !connected;
+  els.restoreBackup.hidden = !isStarterOnlyHabitData(habits);
   els.disconnectGoogle.hidden = !connected;
   els.connectGoogle.disabled = googleBusy || !googleCloudReady;
   els.syncGoogle.disabled = googleBusy;
+  els.restoreBackup.disabled = googleBusy;
   els.disconnectGoogle.disabled = googleBusy;
   els.connectGoogle.parentElement.classList.toggle("connected", connected);
 
@@ -1813,7 +1844,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=37")
+      .register("sw.js?v=38")
       .then((registration) => registration.update())
       .catch(() => {});
   }
