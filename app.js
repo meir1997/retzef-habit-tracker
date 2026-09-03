@@ -971,7 +971,10 @@ function initializeGoogleCloud() {
   firebase.onUserChanged((user) => {
     googleUser = user;
     updateGoogleCloudPanel();
-    if (user && !googleBusy) {
+    if (user) {
+      // Mobile account pickers can keep the popup promise pending after auth succeeds.
+      // The auth state is authoritative, so unblock cloud loading as soon as it changes.
+      if (googleBusy) setGoogleBusy(false);
       reconcileGoogleCloud({ manual: false });
     } else if (!user && !googleBusy) {
       setGoogleCloudStatus("לא מחובר. אפשר להתחבר עם חשבון Google כדי לסנכרן בין המכשירים.", "idle");
@@ -1810,7 +1813,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=36")
+      .register("sw.js?v=37")
       .then((registration) => registration.update())
       .catch(() => {});
   }
