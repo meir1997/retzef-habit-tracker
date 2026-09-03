@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f3ea" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="רצף" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>רצף - מעקב הרגלים</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="assets/icon-180.png" />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css?v=12" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="todayLabel">היום</p>
+          <h1>רצף</h1>
+        </div>
+        <button class="icon-button" id="openAdd" type="button" aria-label="הוספת הרגל">
+          <span aria-hidden="true">+</span>
+        </button>
+      </header>
+
+      <main>
+        <section class="view active" id="view-today" aria-labelledby="todayTitle">
+          <section class="score-panel" aria-labelledby="scoreTitle">
+            <div class="score-total">
+              <span id="scoreTitle">הניקוד שלי</span>
+              <strong id="scoreValue" dir="ltr" aria-live="polite">0</strong>
+            </div>
+            <div class="score-breakdown" aria-label="פירוט הניקוד">
+              <span class="score-done"><b id="scoreDone">0</b> סימוני ✓</span>
+              <span class="score-missed"><b id="scoreMissed">0</b> סימוני X</span>
+            </div>
+            <div class="score-rules" aria-label="כללי הניקוד">
+              <span>✓ <b dir="ltr">+1</b></span>
+              <span>X <b dir="ltr">-5</b></span>
+            </div>
+          </section>
+
+          <div class="summary-panel">
+            <div>
+              <h2 id="todayTitle">המשימות של היום</h2>
+              <p id="todaySummary">טוען הרגלים...</p>
+            </div>
+            <div class="progress-ring" id="todayRing" aria-label="התקדמות יומית">
+              <span id="todayPercent">0%</span>
+            </div>
+          </div>
+
+          <div class="date-controls" aria-label="בחירת יום לסימון">
+            <button class="date-step" id="prevDay" type="button">יום קודם</button>
+            <button class="date-today" id="goToday" type="button">היום</button>
+            <button class="date-step" id="nextDay" type="button">יום הבא</button>
+          </div>
+          <p class="selected-month" id="selectedMonth" aria-live="polite"></p>
+          <div class="week-strip" id="weekStrip" aria-label="בחירת יום מתוך כל הימים הקודמים"></div>
+          <div class="habit-list" id="todayHabits"></div>
+        </section>
+
+        <section class="view" id="view-habits" aria-labelledby="habitsTitle">
+          <div class="section-heading">
+            <div>
+              <h2 id="habitsTitle">כל ההרגלים</h2>
+              <p>עריכה, מחיקה ומעקב אחר רצפים.</p>
+            </div>
+            <button class="text-button" id="openAddSecondary" type="button">חדש</button>
+          </div>
+          <div class="habit-list" id="allHabits"></div>
+        </section>
+
+        <section class="view" id="view-reading" aria-labelledby="readingTitle">
+          <div class="section-heading">
+            <div>
+              <h2 id="readingTitle">הקריאה שלי</h2>
+              <p>ספרים נוכחיים והתקדמות לפי עמודים.</p>
+            </div>
+            <button class="text-button" id="openAddBook" type="button">ספר חדש</button>
+          </div>
+
+          <section class="reading-score-panel" aria-labelledby="readingScoreTitle">
+            <div class="reading-score-total">
+              <span id="readingScoreTitle">ניקוד קריאה</span>
+              <strong id="readingScore" dir="ltr" aria-live="polite">0</strong>
+            </div>
+            <div class="reading-score-details">
+              <span><b id="readingTotalPages">0</b> עמודים</span>
+              <span><b id="readingElapsedDays">0</b> ימים שעברו</span>
+            </div>
+            <div class="score-rules reading-rules" aria-label="כללי ניקוד הקריאה">
+              <span>עמוד <b dir="ltr">+1</b></span>
+              <span>יום <b dir="ltr">-5</b></span>
+            </div>
+          </section>
+
+          <section class="daily-reading-panel" aria-labelledby="dailyReadingTitle">
+            <div>
+              <h3 id="dailyReadingTitle">היעד של היום</h3>
+              <p id="dailyReadingSummary">0 מתוך 5 עמודים</p>
+            </div>
+            <strong id="dailyReadingValue" dir="ltr">0/5</strong>
+            <div class="reading-progress" aria-label="התקדמות ליעד הקריאה היומי">
+              <span id="dailyReadingBar"></span>
+            </div>
+          </section>
+
+          <div class="book-list" id="bookList"></div>
+        </section>
+
+        <section class="view" id="view-insights" aria-labelledby="insightsTitle">
+          <div class="section-heading">
+            <div>
+              <h2 id="insightsTitle">תובנות</h2>
+              <p>מבט מהיר על השבוע והחודש.</p>
+            </div>
+          </div>
+          <div class="stats-grid" id="statsGrid"></div>
+          <div class="cloud-panel">
+            <div class="calendar-head">
+              <h3>סנכרון עם Google</h3>
+              <p>ההרגלים, הספרים וההתקדמות נשמרים בחשבון שלך ומתעדכנים בכל המכשירים.</p>
+            </div>
+            <div class="google-account" id="googleAccount" hidden>
+              <img id="googleAvatar" alt="" referrerpolicy="no-referrer" />
+              <div>
+                <strong id="googleName">חשבון Google</strong>
+                <span id="googleEmail" dir="ltr"></span>
+              </div>
+            </div>
+            <div class="cloud-actions google-actions">
+              <button class="primary-button" id="connectGoogle" type="button">התחברות עם Google</button>
+              <button class="ghost-button neutral" id="syncGoogle" type="button" hidden>סנכרון עכשיו</button>
+              <button class="ghost-button neutral" id="restoreBackup" type="button" hidden>שחזור גיבוי</button>
+              <button class="ghost-button" id="disconnectGoogle" type="button" hidden>התנתקות</button>
+            </div>
+            <p class="cloud-status" id="googleCloudStatus">בודק חיבור לענן...</p>
+          </div>
+          <details class="legacy-sync">
+            <summary>גיבוי GitHub הישן</summary>
+            <div class="legacy-sync-body">
+              <p>
+                אפשר להמשיך להשתמש בגיבוי Gist פרטי.
+                <a href="https://github.com/settings/tokens/new?scopes=gist&description=Retzef%20Habit%20Tracker" target="_blank" rel="noreferrer">יצירת token</a>
+              </p>
+              <label>
+                GitHub token
+                <input id="githubToken" dir="ltr" autocomplete="off" placeholder="Token עם הרשאת gist" type="password" />
+              </label>
+              <div class="cloud-actions">
+                <button class="primary-button" id="saveGithubToken" type="button">חיבור</button>
+                <button class="ghost-button neutral" id="uploadCloud" type="button">שמירה לענן</button>
+                <button class="ghost-button neutral" id="downloadCloud" type="button">טעינה מהענן</button>
+              </div>
+              <p class="cloud-status" id="cloudStatus">לא מחובר ל־GitHub.</p>
+            </div>
+          </details>
+          <div class="calendar-panel">
+            <div class="calendar-head">
+              <h3 id="monthTitle">החודש</h3>
+              <p>כל נקודה מייצגת יום עם לפחות הרגל אחד שבוצע.</p>
+            </div>
+            <div class="calendar-grid" id="monthGrid" aria-label="לוח חודש"></div>
+          </div>
+        </section>
+      </main>
+
+      <nav class="tabbar" aria-label="ניווט ראשי">
+        <button class="tab active" type="button" data-view="today">
+          <span aria-hidden="true">●</span>
+          <span>היום</span>
+        </button>
+        <button class="tab" type="button" data-view="habits">
+          <span aria-hidden="true">◧</span>
+          <span>הרגלים</span>
+        </button>
+        <button class="tab" type="button" data-view="reading">
+          <span aria-hidden="true">▤</span>
+          <span>קריאה</span>
+        </button>
+        <button class="tab" type="button" data-view="insights">
+          <span aria-hidden="true">◌</span>
+          <span>תובנות</span>
+        </button>
+      </nav>
+    </div>
+
+    <dialog class="habit-dialog" id="habitDialog">
+      <form method="dialog" class="habit-form" id="habitForm">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow" id="dialogMode">הרגל חדש</p>
+            <h2>מה תרצה לבנות?</h2>
+          </div>
+          <button class="icon-button subtle" id="closeDialog" type="button" aria-label="סגירה">×</button>
+        </div>
+
+        <input type="hidden" id="habitId" />
+
+        <label>
+          שם ההרגל
+          <input id="habitName" name="name" maxlength="28" placeholder="למשל: הליכה של 20 דקות" required />
+        </label>
+
+        <label>
+          זמן ביום
+          <select id="habitTime" name="time">
+            <option value="בוקר">בוקר</option>
+            <option value="צהריים">צהריים</option>
+            <option value="ערב">ערב</option>
+            <option value="גמיש">גמיש</option>
+          </select>
+        </label>
+
+        <fieldset>
+          <legend>שיטת המעקב</legend>
+          <div class="segmented-control">
+            <label class="segmented-option">
+              <input type="radio" name="trackingMode" value="streak" checked />
+              <span>רצף ימים</span>
+            </label>
+            <label class="segmented-option">
+              <input type="radio" name="trackingMode" value="percentage" />
+              <span>אחוזי הצלחה</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>סוג ההרגל</legend>
+          <div class="segmented-control">
+            <label class="segmented-option">
+              <input type="radio" name="habitType" value="regular" checked />
+              <span>רגיל</span>
+            </label>
+            <label class="segmented-option">
+              <input type="radio" name="habitType" value="bonus" />
+              <span>בונוס</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <label class="switch-row" for="habitCountsTowardScore">
+          <span>נכלל בניקוד</span>
+          <input id="habitCountsTowardScore" type="checkbox" role="switch" checked />
+        </label>
+
+        <fieldset>
+          <legend>ימים פעילים</legend>
+          <div class="day-picker" id="dayPicker"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>צבע</legend>
+          <div class="color-picker" id="colorPicker"></div>
+        </fieldset>
+
+        <label>
+          תזכורת קצרה
+          <input id="habitNote" name="note" maxlength="42" placeholder="משפט קטן שיעזור להתחיל" />
+        </label>
+
+        <div class="dialog-actions">
+          <button class="primary-button" type="submit">שמירה</button>
+          <button class="ghost-button" id="deleteHabit" type="button">מחיקה</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="habit-dialog stats-dialog" id="statsDialog">
+      <div class="habit-form">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">סטטיסטיקה להרגל</p>
+            <h2 id="statsHabitName">הרגל</h2>
+          </div>
+          <button class="icon-button subtle" id="closeStatsDialog" type="button" aria-label="סגירה">×</button>
+        </div>
+        <div class="habit-stats-grid" id="habitStatsGrid"></div>
+        <div class="goal-list" id="goalList"></div>
+        <section class="habit-calendar-panel" aria-labelledby="habitCalendarTitle">
+          <div class="habit-calendar-head">
+            <button class="calendar-nav-button" id="statsPrevMonth" type="button" aria-label="חודש קודם">›</button>
+            <h3 id="habitCalendarTitle">לוח חודשי</h3>
+            <button class="calendar-nav-button" id="statsNextMonth" type="button" aria-label="חודש הבא">‹</button>
+          </div>
+          <div class="habit-calendar-weekdays" id="habitCalendarWeekdays" aria-hidden="true"></div>
+          <div class="habit-calendar-grid" id="habitCalendarGrid" aria-label="לוח סימונים חודשי"></div>
+          <div class="habit-calendar-legend" aria-label="מקרא">
+            <span><i class="done" aria-hidden="true"></i>הצלחה</span>
+            <span><i class="missed" aria-hidden="true"></i>כישלון</span>
+            <span><i class="unmarked" aria-hidden="true"></i>לא סומן</span>
+          </div>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog class="habit-dialog" id="bookDialog">
+      <form method="dialog" class="habit-form" id="bookForm">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow" id="bookDialogMode">ספר חדש</p>
+            <h2>פרטי הספר</h2>
+          </div>
+          <button class="icon-button subtle" id="closeBookDialog" type="button" aria-label="סגירה">×</button>
+        </div>
+
+        <input type="hidden" id="bookId" />
+
+        <label>
+          שם הספר
+          <input id="bookTitle" maxlength="60" placeholder="שם הספר" required />
+        </label>
+
+        <label>
+          מחבר או מחברת
+          <input id="bookAuthor" maxlength="50" placeholder="לא חובה" />
+        </label>
+
+        <label>
+          מספר עמודים בספר
+          <input id="bookTotalPages" inputmode="numeric" min="1" placeholder="לא חובה" type="number" />
+        </label>
+
+        <label id="bookInitialPageLabel">
+          העמוד שבו אתה נמצא עכשיו
+          <input id="bookInitialPage" inputmode="numeric" min="0" value="0" type="number" />
+        </label>
+
+        <div class="dialog-actions">
+          <button class="primary-button" type="submit">שמירה</button>
+          <button class="ghost-button" id="deleteBook" type="button">מחיקה</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="habit-dialog" id="pageDialog">
+      <form method="dialog" class="habit-form" id="pageForm">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">עדכון התקדמות</p>
+            <h2 id="pageBookTitle">ספר</h2>
+          </div>
+          <button class="icon-button subtle" id="closePageDialog" type="button" aria-label="סגירה">×</button>
+        </div>
+
+        <input type="hidden" id="pageBookId" />
+        <label>
+          עד איזה עמוד הגעת?
+          <input id="bookCurrentPage" inputmode="numeric" min="0" type="number" required />
+        </label>
+        <button class="primary-button" type="submit">עדכון</button>
+      </form>
+    </dialog>
+
+    <script src="firebase-config.js?v=1"></script>
+    <script type="module" src="firebase-sync.js?v=6"></script>
+    <script src="app.js?v=33"></script>
+  </body>
+</html>
