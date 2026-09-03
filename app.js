@@ -106,6 +106,8 @@ let selectedColor = colorOptions[0];
 let cloudTimer = null;
 let cloudBusy = false;
 let googleTimer = null;
+let dateStripScrollTimer = null;
+let dateStripProgrammaticScrollUntil = 0;
 let googleBusy = false;
 let googleUser = null;
 let googleCloudReady = false;
@@ -288,6 +290,7 @@ function bindEvents() {
   els.prevDay.addEventListener("click", () => setSelectedDate(addDays(selectedDate, -1)));
   els.goToday.addEventListener("click", () => setSelectedDate(new Date()));
   els.nextDay.addEventListener("click", () => setSelectedDate(addDays(selectedDate, 1)));
+  els.weekStrip.addEventListener("scroll", syncSelectedDateFromStrip, { passive: true });
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => setView(tab.dataset.view));
@@ -598,6 +601,7 @@ function renderDateStrip(selected, today, firstAvailableDate) {
     pill.classList.toggle("selected", key === dateKey(selected));
     pill.classList.toggle("today", key === dateKey(today));
     pill.classList.toggle("done", due.length > 0 && done.length === due.length);
+    pill.dataset.date = key;
     pill.setAttribute("aria-label", `בחירת ${formatFullDate(day)}`);
     pill.innerHTML = `<span>${dayLabels[day.getDay()]}</span><strong>${day.getDate()}</strong>`;
     pill.addEventListener("click", () => setSelectedDate(day));
@@ -605,12 +609,32 @@ function renderDateStrip(selected, today, firstAvailableDate) {
   }
 
   window.requestAnimationFrame(() => {
+    dateStripProgrammaticScrollUntil = Date.now() + 450;
     els.weekStrip.querySelector(".day-pill.selected")?.scrollIntoView({
       inline: "center",
       block: "nearest",
       behavior: "smooth",
     });
   });
+}
+
+function syncSelectedDateFromStrip() {
+  if (Date.now() < dateStripProgrammaticScrollUntil) return;
+  window.clearTimeout(dateStripScrollTimer);
+  dateStripScrollTimer = window.setTimeout(() => {
+    const stripBounds = els.weekStrip.getBoundingClientRect();
+    const stripCenter = stripBounds.left + stripBounds.width / 2;
+    const closest = [...els.weekStrip.querySelectorAll(".day-pill")].reduce(
+      (nearest, pill) => {
+        const bounds = pill.getBoundingClientRect();
+        const distance = Math.abs(bounds.left + bounds.width / 2 - stripCenter);
+        return !nearest || distance < nearest.distance ? { pill, distance } : nearest;
+      },
+      null,
+    );
+    const nextKey = closest?.pill.dataset.date;
+    if (nextKey && nextKey !== dateKey(selectedDate)) setSelectedDate(new Date(`${nextKey}T00:00:00`));
+  }, 120);
 }
 
 function renderHabitList(container, items, options) {
