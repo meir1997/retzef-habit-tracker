@@ -31,6 +31,13 @@ const els = {
   weekStrip: document.querySelector("#weekStrip"),
   todayHabits: document.querySelector("#todayHabits"),
   allHabits: document.querySelector("#allHabits"),
+  archivedHabits: document.querySelector("#archivedHabits"),
+  archiveSection: document.querySelector("#archiveSection"),
+  archiveCount: document.querySelector("#archiveCount"),
+  archiveHabit: document.querySelector("#archiveHabit"),
+  habitDayEditor: document.querySelector("#habitDayEditor"),
+  habitDayLabel: document.querySelector("#habitDayLabel"),
+  habitDayStatus: document.querySelector("#habitDayStatus"),
   statsGrid: document.querySelector("#statsGrid"),
   googleAccount: document.querySelector("#googleAccount"),
   googleAvatar: document.querySelector("#googleAvatar"),
@@ -114,6 +121,7 @@ let googleCloudReady = false;
 let googleCloudHydrated = false;
 let dayRefreshTimer = null;
 let statsHabitId = null;
+let statsSelectedDate = null;
 let statsCalendarMonth = startOfMonth(new Date());
 let screenTimeSyncPromise = null;
 
@@ -299,6 +307,12 @@ function bindEvents() {
   els.form.addEventListener("submit", handleSave);
   els.habitTypes.forEach((input) => input.addEventListener("change", syncHabitTypeControls));
   els.deleteHabit.addEventListener("click", handleDelete);
+  els.archiveHabit.addEventListener("click", handleArchive);
+  els.habitDayEditor.querySelectorAll("[data-day-status]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (statsSelectedDate) setHabitStatus(statsHabitId, button.dataset.dayStatus, statsSelectedDate, { toggle: false });
+    });
+  });
   els.connectGoogle.addEventListener("click", handleConnectGoogle);
   els.syncGoogle.addEventListener("click", () => reconcileGoogleCloud({ manual: true }));
   els.restoreBackup.addEventListener("click", handleRestoreBackup);
@@ -362,7 +376,7 @@ function render() {
   selectedDate = clampDateToTrackerRange(selectedDate);
   const selected = startOfDay(selectedDate);
   const selectedKey = dateKey(selected);
-  const dueSelected = habits.filter((habit) => isHabitDue(habit, selected));
+  const dueSelected = habits.filter((habit) => !habit.archived && isHabitDue(habit, selected));
   const doneSelected = dueSelected.filter((habit) => getRecordStatus(habit, selectedKey) === "done");
   const percent = dueSelected.length ? Math.round((doneSelected.length / dueSelected.length) * 100) : 0;
   const isToday = isSameDate(selected, today);
@@ -383,7 +397,11 @@ function render() {
   renderDateStrip(selected, today, firstAvailableDate);
   renderScore(today);
   renderHabitList(els.todayHabits, dueSelected, { todayOnly: true, date: selected });
-  renderHabitList(els.allHabits, habits, { todayOnly: false, date: today });
+  renderHabitList(els.allHabits, habits.filter((habit) => !habit.archived), { todayOnly: false, date: today });
+  const archived = habits.filter((habit) => habit.archived);
+  els.archiveSection.hidden = archived.length === 0;
+  els.archiveCount.textContent = archived.length;
+  renderHabitList(els.archivedHabits, archived, { todayOnly: false, date: today });
   renderReading(today);
   renderInsights(today);
   renderCloudPanel();
@@ -593,7 +611,7 @@ function renderDateStrip(selected, today, firstAvailableDate) {
 
   for (let day = startOfDay(firstAvailableDate); day <= startOfDay(today); day = addDays(day, 1)) {
     const key = dateKey(day);
-    const due = habits.filter((habit) => isHabitDue(habit, day));
+    const due = habits.filter((habit) => !habit.archived && isHabitDue(habit, day));
     const done = due.filter((habit) => getRecordStatus(habit, key) === "done");
     const pill = document.createElement("button");
     pill.className = "day-pill";
@@ -653,7 +671,7 @@ function renderHabitList(container, items, options) {
     : items;
 
   orderedItems.forEach((habit) => {
-    const canMark = isHabitDue(habit, listDate) && !isFutureDate(listDate);
+    const canMark = !habit.archived && isHabitDue(habit, listDate) && !isFutureDate(listDate);
     const status = getRecordStatus(habit, key);
     const done = status === "done";
     const missed = status === "missed";
@@ -688,7 +706,7 @@ function renderHabitList(container, items, options) {
       <div class="habit-meta">
         <span class="streak">${habit.trackingMode === "percentage" ? `${formatPercent(stats.successPercent)}% הצלחה` : `${stats.currentStreak} ימים`}</span>
         <button class="text-link" type="button">עריכה</button>
-        <button class="text-link" type="button" data-action="stats">סטטיסטיקה</button>
+        <button class="text-link" type="button" data-action="stats">פרטים וסימון ימים</button>
       </div>
     `;
 
@@ -750,14 +768,15 @@ function renderMonth(today) {
   }
 }
 
-function setHabitStatus(id, nextStatus, date = selectedDate) {
+function setHabitStatus(id, nextStatus, date = selectedDate, { toggle = true } = {}) {
   const habit = habits.find((item) => item.id === id);
   if (!habit) return;
   const targetDate = startOfDay(date);
-  if (!isHabitDue(habit, targetDate) || isFutureDate(targetDate)) return;
+  if (!isHabitDue(habit, targetDate) || isFutureDate(targetDate) || targetDate < getHabitStartDate(habit)) return;
+  if (!["done", "missed", "none"].includes(nextStatus) || (habit.isBonus && nextStatus === "missed")) return;
   const key = dateKey(targetDate);
   const currentStatus = getRecordStatus(habit, key);
-  if (currentStatus === nextStatus) {
+  if (nextStatus === "none" || (toggle && currentStatus === nextStatus)) {
     delete habit.records[key];
   } else {
     habit.records[key] = nextStatus === "done" ? true : "missed";
@@ -765,6 +784,7 @@ function setHabitStatus(id, nextStatus, date = selectedDate) {
   touchLocalData();
   render();
   scheduleCloudUpload();
+  if (els.statsDialog.open && statsHabitId === id) renderStatsDialog();
 }
 
 function setSelectedDate(date) {
@@ -777,6 +797,14 @@ function openStatsDialog(id) {
   if (!habit) return;
   statsHabitId = habit.id;
   statsCalendarMonth = startOfMonth(new Date());
+  statsSelectedDate = null;
+  renderStatsDialog();
+  els.statsDialog.showModal();
+}
+
+function renderStatsDialog() {
+  const habit = habits.find((item) => item.id === statsHabitId);
+  if (!habit) return;
   const stats = getHabitStats(habit);
   els.statsHabitName.textContent = habit.name;
   if (habit.trackingMode === "percentage") {
@@ -829,7 +857,7 @@ function openStatsDialog(id) {
     }).join("");
   }
   renderHabitCalendar();
-  els.statsDialog.showModal();
+  renderHabitDayEditor();
 }
 
 function changeStatsCalendarMonth(amount) {
@@ -840,7 +868,9 @@ function changeStatsCalendarMonth(amount) {
   const requestedMonth = addMonths(statsCalendarMonth, amount);
   if (requestedMonth < firstMonth || requestedMonth > currentMonth) return;
   statsCalendarMonth = requestedMonth;
+  statsSelectedDate = null;
   renderHabitCalendar();
+  renderHabitDayEditor();
 }
 
 function renderHabitCalendar() {
@@ -897,15 +927,47 @@ function renderHabitCalendar() {
 
     const todayClass = isSameDate(date, today) ? " today" : "";
     const ariaLabel = `${formatFullDate(date)}, ${statusLabel}`;
+    const canEdit = date >= habitStart && date <= today && isHabitDue(habit, date);
+    const selectedClass = statsSelectedDate && isSameDate(date, statsSelectedDate) ? " selected" : "";
     cells.push(`
-      <span class="habit-calendar-day ${status}${todayClass}" aria-label="${ariaLabel}">
+      <button type="button" class="habit-calendar-day ${status}${todayClass}${selectedClass}" data-date="${key}" aria-label="${ariaLabel}" aria-pressed="${Boolean(selectedClass)}" ${canEdit ? "" : "disabled"}>
         <b>${day}</b>
         <small aria-hidden="true">${marker}</small>
-      </span>
+      </button>
     `);
   }
 
   els.habitCalendarGrid.innerHTML = cells.join("");
+  els.habitCalendarGrid.querySelectorAll("button:not(:disabled)").forEach((button) => {
+    button.addEventListener("click", () => {
+      statsSelectedDate = parseDateKey(button.dataset.date);
+      renderHabitCalendar();
+      renderHabitDayEditor();
+    });
+  });
+}
+
+function renderHabitDayEditor() {
+  const habit = habits.find((item) => item.id === statsHabitId);
+  els.habitDayEditor.hidden = !habit || !statsSelectedDate;
+  if (!habit || !statsSelectedDate) return;
+  const status = getRecordStatus(habit, dateKey(statsSelectedDate));
+  els.habitDayLabel.textContent = formatFullDate(statsSelectedDate);
+  els.habitDayStatus.textContent = status === "done" ? "סומן כבוצע" : status === "missed" ? "סומן X" : "עדיין לא סומן";
+  els.habitDayEditor.querySelectorAll("[data-day-status]").forEach((button) => {
+    button.hidden = habit.isBonus && button.dataset.dayStatus === "missed";
+    button.setAttribute("aria-pressed", String(button.dataset.dayStatus === status));
+  });
+}
+
+function handleArchive() {
+  const habit = habits.find((item) => item.id === els.habitId.value);
+  if (!habit) return;
+  habit.archived = !habit.archived;
+  els.dialog.close();
+  touchLocalData();
+  render();
+  scheduleCloudUpload();
 }
 
 function openHabitDialog(id = null) {
@@ -914,6 +976,8 @@ function openHabitDialog(id = null) {
   els.habitId.value = habit?.id ?? "";
   els.dialogMode.textContent = habit ? "עריכת הרגל" : "הרגל חדש";
   els.deleteHabit.hidden = !habit;
+  els.archiveHabit.hidden = !habit;
+  els.archiveHabit.textContent = habit?.archived ? "החזרה מהארכיון" : "העברה לארכיון";
   selectedDays = habit ? [...habit.days] : [0, 1, 2, 3, 4, 5, 6];
   selectedColor = habit?.color ?? colorOptions[0];
   els.habitName.value = habit?.name ?? "";
@@ -956,6 +1020,7 @@ function handleSave(event) {
   const existing = habits.find((habit) => habit.id === id);
   const isBonus = [...els.habitTypes].some((input) => input.checked && input.value === "bonus");
   const nextHabit = {
+    ...existing,
     id,
     name: els.habitName.value.trim(),
     time: els.habitTime.value,
@@ -1880,7 +1945,7 @@ function registerServiceWorker() {
     }
 
     navigator.serviceWorker
-      .register("sw.js?v=39")
+      .register("sw.js?v=40")
       .then((registration) => registration.update())
       .catch(() => {});
   }

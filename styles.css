@@ -1429,3 +1429,21 @@ select:focus {
     grid-template-columns: 1fr;
   }
 }
+
+/* Archive and per-habit history editing. */
+[hidden] { display: none !important; }
+.archive-section { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; }
+.archive-section summary { cursor: pointer; font-weight: 800; padding: 10px 0; }
+.archive-section > p, .calendar-help { color: var(--muted); font-size: 13px; line-height: 1.5; margin-bottom: 12px; }
+.habit-calendar-day { font: inherit; padding: 2px; }
+button.habit-calendar-day:not(:disabled) { cursor: pointer; }
+.habit-calendar-day:disabled { opacity: 1; }
+.habit-calendar-day.selected { box-shadow: inset 0 0 0 3px var(--ink); }
+.habit-calendar-day:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
+.habit-day-editor { padding: 12px; margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-strong); }
+.habit-day-editor p { color: var(--muted); font-size: 13px; margin: 6px 0; }
+.day-status-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.day-status-actions button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; }
+.day-status-actions button[aria-pressed="true"] { border-color: var(--green); background: #e3f1e9; }
+.dialog-actions { flex-wrap: wrap; }
+.day-status-actions button[aria-pressed="true"] { color: var(--ink); }
