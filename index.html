@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icon-180.png" />
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=12" />
+    <link rel="stylesheet" href="styles.css?v=13" />
   </head>
   <body>
     <div class="app-shell">
@@ -71,6 +71,11 @@
             <button class="text-button" id="openAddSecondary" type="button">חדש</button>
           </div>
           <div class="habit-list" id="allHabits"></div>
+          <details id="archiveSection" class="archive-section" hidden>
+            <summary>ארכיון (<span id="archiveCount">0</span>)</summary>
+            <p>הרגלים בארכיון לא מופיעים ביום־יום. ההיסטוריה והניקוד נשמרים, ואפשר להחזיר אותם דרך עריכה.</p>
+            <div class="habit-list" id="archivedHabits"></div>
+          </details>
         </section>
 
         <section class="view" id="view-reading" aria-labelledby="readingTitle">
@@ -265,6 +270,7 @@
 
         <div class="dialog-actions">
           <button class="primary-button" type="submit">שמירה</button>
+          <button class="ghost-button" id="archiveHabit" type="button" hidden>העברה לארכיון</button>
           <button class="ghost-button" id="deleteHabit" type="button">מחיקה</button>
         </div>
       </form>
@@ -274,7 +280,7 @@
       <div class="habit-form">
         <div class="dialog-head">
           <div>
-            <p class="eyebrow">סטטיסטיקה להרגל</p>
+            <p class="eyebrow">פרטי ההרגל וסימון ימים</p>
             <h2 id="statsHabitName">הרגל</h2>
           </div>
           <button class="icon-button subtle" id="closeStatsDialog" type="button" aria-label="סגירה">×</button>
@@ -287,8 +293,18 @@
             <h3 id="habitCalendarTitle">לוח חודשי</h3>
             <button class="calendar-nav-button" id="statsNextMonth" type="button" aria-label="חודש הבא">‹</button>
           </div>
+          <p class="calendar-help">בחר יום בלוח כדי לסמן בוצע, X או לנקות סימון. אפשר לעבור לחודשים קודמים.</p>
           <div class="habit-calendar-weekdays" id="habitCalendarWeekdays" aria-hidden="true"></div>
           <div class="habit-calendar-grid" id="habitCalendarGrid" aria-label="לוח סימונים חודשי"></div>
+          <section id="habitDayEditor" class="habit-day-editor" aria-label="סימון היום שנבחר" hidden>
+            <strong id="habitDayLabel"></strong>
+            <p id="habitDayStatus" aria-live="polite"></p>
+            <div class="day-status-actions">
+              <button class="text-button" type="button" data-day-status="done">✓ בוצע</button>
+              <button class="text-button" type="button" data-day-status="missed">× לא בוצע</button>
+              <button class="text-button" type="button" data-day-status="none">ניקוי סימון</button>
+            </div>
+          </section>
           <div class="habit-calendar-legend" aria-label="מקרא">
             <span><i class="done" aria-hidden="true"></i>הצלחה</span>
             <span><i class="missed" aria-hidden="true"></i>כישלון</span>
@@ -358,6 +374,6 @@
 
     <script src="firebase-config.js?v=1"></script>
     <script type="module" src="firebase-sync.js?v=6"></script>
-    <script src="app.js?v=34"></script>
+    <script src="app.js?v=35"></script>
   </body>
 </html>
